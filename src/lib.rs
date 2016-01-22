@@ -1,4 +1,3 @@
-#![feature(str_char)]
 //!
 //!
 //! A note on colors:
@@ -117,7 +116,7 @@ where Vec<T> : WriteBytesExt {
             if idx >= v.0.len() {
                 self.write_u8(0).unwrap();
             } else {
-                self.write_u8(v.0.char_at(idx) as u8).unwrap();
+                self.write_u8(v.0.chars().nth(idx).unwrap() as u8).unwrap();
             }
         }
     }
