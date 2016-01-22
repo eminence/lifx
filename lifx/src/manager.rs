@@ -24,6 +24,10 @@ use std::sync::{
 };
 
 
+
+/// Represents the state of a LIFX bulb.
+///
+/// Note that the data stored in this struct is not "live".  
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bulb {
     pub name: Option<LifxString>,
@@ -89,6 +93,21 @@ impl NetManager {
         }
     }
 
+
+    /// Broadcast the given message.  Not all messages make sense in a broadcast content, so take
+    /// care.
+    pub fn broadcast(&self, msg: Messages) {
+        let msg = RawMessage::build(None, msg);
+        self.sock.send_to(&msg.pack(),"255.255.255.255:56700").unwrap();
+    }
+
+    pub fn send_msg(&self, bulb: &Bulb, msg: Messages) {
+        let msg = RawMessage::build(Some(bulb.id), msg);
+        println!("Sending message to {:?}", bulb.addr.unwrap());
+        self.sock.send_to(&msg.pack(), bulb.addr.unwrap()).unwrap();
+    }
+
+    /// Broadcasts a `LightGet` message, which causes all bulbs to identify themselves.
     pub fn refresh_all(&self) {
         let msg = RawMessage::build(None, Messages::LightGet);
         self.sock.send_to(&msg.pack(),"255.255.255.255:56700").unwrap();
@@ -123,6 +142,7 @@ impl NetManager {
 
     }
 
+    /// Dumps to stdout all known bulbs.  Useful for debugging, but otherwise not recommended.
     pub fn print(&self) {
         self.mgr.lock().unwrap().print();
     }
@@ -145,7 +165,9 @@ impl NetManager {
 /// your bulbs each time.
 ///
 /// If you want to be responsible for the network communication, simply
-/// pass incoming RawMessages to the update() method
+/// pass incoming RawMessages to the update() method.
+///
+/// See also `lifx::NetManager` which will also manage some of the network communication for you.
 pub struct Manager {
     bulbs: HashMap<u64, Bulb>,
 }
@@ -159,6 +181,10 @@ impl Manager {
         Manager { bulbs: HashMap::new() }
     }
 
+
+    /// Updates the internal list of known bulbs with data from the supplied `RawMessage`
+    ///
+    /// the `addr` parameter should be the sender of this message
     pub fn update(&mut self, raw: &RawMessage, addr: SocketAddr) {
         let target = raw.frame_addr.target;
         if target == 0 { return }
@@ -195,6 +221,8 @@ impl Manager {
         }
 
     }
+
+    /// Dumps to stdout all known bulbs.  Useful for debugging, but otherwise not recommended.
     pub fn print(&self) {
         println!("Known bulbs:");
         for bulb in self.bulbs.values() {

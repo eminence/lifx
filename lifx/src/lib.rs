@@ -1,19 +1,13 @@
 //!
+//! A library for controlling your LIFX bulbs.
 //!
-//! A note on colors:
+//! There are a few levels you can use:
 //!
-//! Colors are represented as Hue-Saturation-Brightness-Kelvin, or HSBK
-//!
-//! When a light is displaying whites, saturation will be zero, hue will be ignored, and only
-//! brightness and kelvin will matter.
-//!
-//! When a light is displaying colors, kelvin is ignored.  At 100% brightness, brightness=65535 and
-//! saturation is about 1300.
-//!
-//! As wheel brightness decreses to 50%, saturation rises to 65535, while brightness stays at
-//! 65535.
-//!
-//! As wheel brightness decreses to 0%, saturation stays the same while brightness decreases to 0.
+//!  * `RawMessage` is used to speak the low-level LIFX protocol.  You will have to manually
+//!  send/receive packets to/from the network.
+//!  * `Manager` will keep track of light bulb state, byt you'll still have manage the network
+//!  communication.
+//!  * `NetManager` will periodly refresh bulb state from the network for you.
 
 extern crate byteorder;
 extern crate rand;
@@ -237,6 +231,12 @@ macro_rules! unpack {
     };
 }
 
+/// Decoded LIFX Messages
+///
+/// This enum lists all of the LIFX message types known to this library.
+///
+/// Note that other message types exist, but are not officially documented (and so are not
+/// available here).
 #[derive(Debug)]
 pub enum Messages {
 
@@ -681,6 +681,22 @@ impl Messages {
 
 }
 
+/// Bulb color (Hue-Saturation-Brightness-Kelvin)
+///
+/// A note on colors:
+///
+/// Colors are represented as Hue-Saturation-Brightness-Kelvin, or HSBK
+///
+/// When a light is displaying whites, saturation will be zero, hue will be ignored, and only
+/// brightness and kelvin will matter.
+///
+/// When a light is displaying colors, kelvin is ignored.  At 100% brightness, brightness=65535 and
+/// saturation is about 1300.
+///
+/// As wheel brightness decreses to 50%, saturation rises to 65535, while brightness stays at
+/// 65535.
+///
+/// As wheel brightness decreses to 0%, saturation stays the same while brightness decreases to 0.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HSBK {
     pub hue: u16,
@@ -912,6 +928,11 @@ impl ProtocolHeader {
 
 impl RawMessage {
 
+    /// Build a RawMessage (which is suitable for sending on the network) from a given Message
+    /// type.
+    ///
+    /// If `target` is None, then the message is addressed to all devices.  Else it should be a
+    /// bulb UID
     pub fn build(target: Option<u64>, typ: Messages) -> RawMessage {
         let mut rng = thread_rng();
 
@@ -1039,16 +1060,21 @@ impl RawMessage {
         msg
     }
 
+    // The total size (in bytes) of the packed version of this message.
     pub fn packed_size(&self) -> usize {
         Frame::packed_size() + FrameAddress::packed_size() 
             + ProtocolHeader::packed_size() 
             + self.payload.len()
     }
+
+    /// Validates that this object was constructed correctly.  Panics if not.
     pub fn validate(&self) {
         self.frame.validate();
         self.frame_addr.validate();
         self.protocol_header.validate();
     }
+
+    /// Packs this RawMessage into some bytes that can be send over the network.
     pub fn pack(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(self.packed_size());
         v.extend(self.frame.pack());
@@ -1057,6 +1083,8 @@ impl RawMessage {
         v.extend(&self.payload);
         v
     }
+    /// Given some bytes (generally read from a network socket), unpack the data into a
+    /// `RawMessage` structure.
     pub fn unpack(v: &[u8]) -> RawMessage {
         let mut start = 0;
         let frame = Frame::unpack(v);
