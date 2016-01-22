@@ -1,0 +1,15 @@
+[package]
+name = "lifx-bin"
+version = "0.1.0"
+authors = ["Andrew Chin <achin@eminence32.net>"]
+description = "Utilities for controlling your LIFX bulbs"
+
+
+[dependencies]
+lifx = {path="lifx"}
+libc = "0.2"
+term = "0.2"
+
+[[bin]]
+name = "monitor"
+path = "src/monitor.rs"
