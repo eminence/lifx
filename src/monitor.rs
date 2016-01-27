@@ -47,14 +47,21 @@ fn main () {
     let mgr = NetManager::new(sock);
     mgr.refresh_all();
 
+    let mut c = 0;
     loop {
         std::thread::sleep_ms(1000);
-        tmgr.clear();
+        //tmgr.clear();
         mgr.maintain();
         for (uid, bulb) in mgr.bulbs() {
             println!("{}", bulb.name.unwrap_or(LifxString::new("Unknown")));
+            println!("  ID:      {}", bulb.id);
             println!("  Powered: {}", bulb.powered.unwrap());
             println!("  Color:   {:?}", bulb.color);
+        }
+        c += 1;
+        if (c > 10) {
+            c = 0;
+            mgr.refresh_all();
         }
     }
 

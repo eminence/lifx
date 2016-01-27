@@ -21,7 +21,7 @@ fn main() {
     mgr.refresh_all();
     // broadcast a PowerOff to all bulbs, and then loop for a while to make sure that they are
     // in-fact all off
-    //mgr.broadcast(Messages::LightSetPower{level: 0, duration: 1000});
+    mgr.broadcast(Messages::LightSetPower{level: 0, duration: 1000});
 
     for _ in 0..10 {
         std::thread::sleep_ms(1000);

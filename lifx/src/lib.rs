@@ -26,6 +26,16 @@ pub use termmgr::TermMgr;
 
 pub struct EchoPayload([u8; 64]);
 
+impl std::clone::Clone for EchoPayload {
+    fn clone(&self) -> EchoPayload {
+        let mut p = [0; 64];
+        for x in 0..64 {
+            p[x] = self.0[x];
+        }
+        EchoPayload(p)
+    }
+}
+
 impl std::fmt::Debug for EchoPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "<EchoPayload>")
@@ -237,7 +247,7 @@ macro_rules! unpack {
 ///
 /// Note that other message types exist, but are not officially documented (and so are not
 /// available here).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Messages {
 
     /// GetService - 2
@@ -697,7 +707,7 @@ impl Messages {
 /// 65535.
 ///
 /// As wheel brightness decreses to 0%, saturation stays the same while brightness decreases to 0.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct HSBK {
     pub hue: u16,
     pub saturation: u16,
@@ -926,6 +936,23 @@ impl ProtocolHeader {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct BuildOptions {
+    pub target: Option<u64>,
+    pub ack_required: bool,
+    pub res_required: bool,
+    pub sequence: u8
+}
+
+impl std::default::Default for BuildOptions {
+    fn default() -> BuildOptions { BuildOptions {
+        target: None,
+        ack_required: false,
+        res_required: false,
+        sequence: 0
+    } }
+}
+
 impl RawMessage {
 
     /// Build a RawMessage (which is suitable for sending on the network) from a given Message
@@ -933,25 +960,25 @@ impl RawMessage {
     ///
     /// If `target` is None, then the message is addressed to all devices.  Else it should be a
     /// bulb UID
-    pub fn build(target: Option<u64>, typ: Messages) -> RawMessage {
+    pub fn build(options: BuildOptions, typ: Messages) -> RawMessage {
         let mut rng = thread_rng();
 
 
         let frame = Frame {
             size: 0,
             origin: 0,
-            tagged: target.is_none(),
+            tagged: options.target.is_none(),
             addressable: true,
             protocol: 1024,
             source: u32::rand(&mut rng)
         };
         let addr = FrameAddress {
-            target: target.unwrap_or(0),
+            target: options.target.unwrap_or(0),
             reserved: [0;6],
             reserved2: 0,
-            ack_required: false,
-            res_required: true,
-            sequence: 128
+            ack_required: options.ack_required,
+            res_required: options.res_required,
+            sequence: options.sequence
         };
         let phead = ProtocolHeader{
             reserved: 0,

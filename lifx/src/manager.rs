@@ -5,6 +5,7 @@ use ::{
     HSBK,
     LifxString,
     LifxIdent,
+    BuildOptions
 };
 
 use chrono::datetime::DateTime;
@@ -97,19 +98,21 @@ impl NetManager {
     /// Broadcast the given message.  Not all messages make sense in a broadcast content, so take
     /// care.
     pub fn broadcast(&self, msg: Messages) {
-        let msg = RawMessage::build(None, msg);
+        let msg = RawMessage::build(BuildOptions::default(), msg);
         self.sock.send_to(&msg.pack(),"255.255.255.255:56700").unwrap();
     }
 
     pub fn send_msg(&self, bulb: &Bulb, msg: Messages) {
-        let msg = RawMessage::build(Some(bulb.id), msg);
+        let mut options = BuildOptions::default();
+        options.target = Some(bulb.id);
+        let msg = RawMessage::build(options, msg);
         println!("Sending message to {:?}", bulb.addr.unwrap());
         self.sock.send_to(&msg.pack(), bulb.addr.unwrap()).unwrap();
     }
 
     /// Broadcasts a `LightGet` message, which causes all bulbs to identify themselves.
     pub fn refresh_all(&self) {
-        let msg = RawMessage::build(None, Messages::LightGet);
+        let msg = RawMessage::build(BuildOptions::default(), Messages::LightGet);
         self.sock.send_to(&msg.pack(),"255.255.255.255:56700").unwrap();
     }
 
@@ -119,11 +122,13 @@ impl NetManager {
     /// this method returns
     pub fn refresh(&self, bulb: &Bulb) {
         if let Some(ref addr) = bulb.addr {
-            let msg = RawMessage::build(Some(bulb.id), Messages::LightGet);
+            let mut options = BuildOptions::default();
+            options.target = Some(bulb.id);
+            let msg = RawMessage::build(options.clone(), Messages::LightGet);
             self.sock.send_to(&msg.pack(), addr).unwrap();
-            let msg = RawMessage::build(Some(bulb.id), Messages::GetGroup);
+            let msg = RawMessage::build(options.clone(), Messages::GetGroup);
             self.sock.send_to(&msg.pack(), addr).unwrap();
-            let msg = RawMessage::build(Some(bulb.id), Messages::GetLocation);
+            let msg = RawMessage::build(options.clone(), Messages::GetLocation);
             self.sock.send_to(&msg.pack(), addr).unwrap();
         }
     }
@@ -216,7 +221,9 @@ impl Manager {
                 Messages::StateLocation{label, ..} => {
                     bulb.location_label = Some(label);
                 }
-                _ => ()
+                e => {
+                    println!("recv: {:?}", e);
+                }
             }
         }
 
