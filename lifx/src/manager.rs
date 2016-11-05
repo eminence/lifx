@@ -1,7 +1,7 @@
 
 use ::{
     RawMessage,
-    Messages,
+    Message,
     HSBK,
     LifxString,
     LifxIdent,
@@ -12,6 +12,9 @@ use chrono::datetime::DateTime;
 use chrono::offset::local::Local;
 use chrono::duration::Duration;
 
+use rand;
+
+use std::num::Wrapping;
 use std::thread;
 use std::collections::HashMap;
 use std::net::{
@@ -21,7 +24,9 @@ use std::net::{
 
 use std::sync::{
     Arc,
-    Mutex
+    Mutex,
+    Condvar,
+    RwLock
 };
 
 
@@ -64,7 +69,8 @@ impl Bulb {
 /// Handles network communication for you
 pub struct NetManager {
     mgr: Arc<Mutex<Manager>>,
-    sock: UdpSocket
+    sock: UdpSocket,
+    cvar: Arc<RwLock<HashMap<u8, Arc<(Mutex<u8>, Condvar)>>>>
 }
 
 impl NetManager {
@@ -75,14 +81,24 @@ impl NetManager {
 
         // start up a thread to read messages off the net
         let rsock = sock.try_clone().unwrap();
+        let cvar : Arc<RwLock<HashMap<u8, Arc<(Mutex<u8>, Condvar)>>>> = Arc::new(RwLock::new(HashMap::new()));
+        let self_cvar = cvar.clone();
         let thr = thread::spawn(move || {
             let mut buf = [0;2048];
             loop {
                 let (amt, src) = rsock.recv_from(&mut buf).unwrap();
                 //println!("Received {}  bytes from {:?}", amt, src);
-                let raw = RawMessage::unpack(&buf);
+                let raw = RawMessage::unpack(&buf[0..amt]);
                 {
                     mgr.lock().unwrap().update(&raw, src);
+                }
+                let seq = raw.frame_addr.sequence;
+                if let Some(arc) = self_cvar.write().unwrap().get(&seq) {
+                    let (ref mutex, ref cvar) = **arc;
+                    let mut x = mutex.lock().unwrap();
+                    *x += 1;
+                    println!("Trying to wait up thread waiting on ack for seq {}", seq);
+                    cvar.notify_all();
                 }
             }
 
@@ -90,29 +106,104 @@ impl NetManager {
 
         NetManager {
             mgr: _mgr,
-            sock: sock
+            sock: sock,
+            cvar: cvar
         }
     }
 
 
     /// Broadcast the given message.  Not all messages make sense in a broadcast content, so take
     /// care.
-    pub fn broadcast(&self, msg: Messages) {
-        let msg = RawMessage::build(BuildOptions::default(), msg);
+    pub fn broadcast(&self, msg: Message) {
+        let msg = RawMessage::build(&BuildOptions::default(), msg);
         self.sock.send_to(&msg.pack(),"255.255.255.255:56700").unwrap();
     }
 
-    pub fn send_msg(&self, bulb: &Bulb, msg: Messages) {
+    /// Broadcast a message, and wait for the given number of ACKs
+    pub fn broadcast_sync(&self, msg: Message, num_acks: u8) {
+        let mut options = BuildOptions::default();
+        options.ack_required = true;
+        options.sequence = { self.mgr.lock().unwrap().next_seq() };
+        let seq = options.sequence;
+        let msg = RawMessage::build(&options, msg);
+        println!("Sending message to broadcast with seq={}", seq);
+
+        let pair = Arc::new((Mutex::new(0), Condvar::new()));
+        let par2 = pair.clone();
+        {
+            let mut cvar_map = self.cvar.write().unwrap();
+            cvar_map.insert(seq, par2);
+        }
+
+        self.sock.send_to(&msg.pack(),"255.255.255.255:56700").unwrap();
+
+        let &(ref lock, ref cvar) = &*pair;
+        // have_ack is the number of acks we've received
+        let mut have_ack = lock.lock().unwrap();
+        while *have_ack < num_acks {
+                println!("Current acks: {}", *have_ack);
+                have_ack = cvar.wait(have_ack).unwrap();
+        }
+        println!("Ack for {} received", seq);
+        
+        {
+            let mut cvar_map = self.cvar.write().unwrap();
+            if let None = cvar_map.remove(&seq) {
+                println!("Hmm, unable to remove seq {} from cvar map", seq);
+            }
+        }
+
+
+    }
+
+    pub fn send_msg(&self, bulb: &Bulb, msg: Message) {
         let mut options = BuildOptions::default();
         options.target = Some(bulb.id);
-        let msg = RawMessage::build(options, msg);
+        let msg = RawMessage::build(&options, msg);
         println!("Sending message to {:?}", bulb.addr.unwrap());
         self.sock.send_to(&msg.pack(), bulb.addr.unwrap()).unwrap();
     }
 
+    /// Sends a message and waits for it to be ackd by the bulb
+    pub fn send_msg_sync(&self, bulb: &Bulb, msg: Message) {
+        let mut options = BuildOptions::default();
+        options.target = Some(bulb.id);
+        options.ack_required = true;
+        options.sequence = { self.mgr.lock().unwrap().next_seq() };
+        let seq = options.sequence;
+        let msg = RawMessage::build(&options, msg);
+        println!("Sending message to {:?} with seq={}", bulb.addr.unwrap(), seq);
+
+        let pair = Arc::new((Mutex::new(0), Condvar::new()));
+        let par2 = pair.clone();
+        {
+            let mut cvar_map = self.cvar.write().unwrap();
+            cvar_map.insert(seq, par2);
+        }
+        
+        self.sock.send_to(&msg.pack(), bulb.addr.unwrap()).unwrap();
+
+        let &(ref lock, ref cvar) = &*pair;
+        // have_ack is the number of acks we've received
+        let mut have_ack = lock.lock().unwrap();
+        while *have_ack == 0 {
+                have_ack = cvar.wait(have_ack).unwrap();
+        }
+        println!("Ack for {} received", seq);
+
+
+        {
+            let mut cvar_map = self.cvar.write().unwrap();
+            if let None = cvar_map.remove(&seq) {
+                println!("Hmm, unable to remove seq {} from cvar map", seq);
+            }
+        }
+
+    }
+
     /// Broadcasts a `LightGet` message, which causes all bulbs to identify themselves.
     pub fn refresh_all(&self) {
-        let msg = RawMessage::build(BuildOptions::default(), Messages::LightGet);
+        let msg = RawMessage::build(&BuildOptions::default(), Message::LightGet);
         self.sock.send_to(&msg.pack(),"255.255.255.255:56700").unwrap();
     }
 
@@ -124,11 +215,11 @@ impl NetManager {
         if let Some(ref addr) = bulb.addr {
             let mut options = BuildOptions::default();
             options.target = Some(bulb.id);
-            let msg = RawMessage::build(options.clone(), Messages::LightGet);
+            let msg = RawMessage::build(&options, Message::LightGet);
             self.sock.send_to(&msg.pack(), addr).unwrap();
-            let msg = RawMessage::build(options.clone(), Messages::GetGroup);
+            let msg = RawMessage::build(&options, Message::GetGroup);
             self.sock.send_to(&msg.pack(), addr).unwrap();
-            let msg = RawMessage::build(options.clone(), Messages::GetLocation);
+            let msg = RawMessage::build(&options, Message::GetLocation);
             self.sock.send_to(&msg.pack(), addr).unwrap();
         }
     }
@@ -170,11 +261,15 @@ impl NetManager {
 /// your bulbs each time.
 ///
 /// If you want to be responsible for the network communication, simply
-/// pass incoming RawMessages to the update() method.
+/// pass incoming RawMessage to the update() method.
 ///
 /// See also `lifx::NetManager` which will also manage some of the network communication for you.
 pub struct Manager {
     bulbs: HashMap<u64, Bulb>,
+    /// If asked for a sequence number, use this one.  Wraps around
+    next_seq: Wrapping<u8>,
+
+    //ack_callbacks: HashMap<u8, Box<Fn()>>
 }
 
 impl Manager {
@@ -183,7 +278,18 @@ impl Manager {
     /// Update its state by reading a RawMessage off the network and passing it to the manager's
     /// update() method
     pub fn new() -> Manager {
-        Manager { bulbs: HashMap::new() }
+        let mut rng = rand::thread_rng();
+        Manager {
+            bulbs: HashMap::new(),
+            next_seq: Wrapping(rand::Rand::rand(&mut rng))
+        }
+
+    }
+
+    pub fn next_seq(&mut self) -> u8 {
+        let Wrapping(v) = self.next_seq;
+        self.next_seq = self.next_seq + Wrapping(1);
+        v
     }
 
 
@@ -199,26 +305,26 @@ impl Manager {
         let mut bulb = self.bulbs.entry(target).or_insert(Bulb::default(target));
         bulb.addr = Some(addr);
 
-        if let Some(msg) = Messages::from_raw(raw) {
+        if let Some(msg) = Message::from_raw(raw) {
             match msg {
-                Messages::StateService{port, ..} => {
+                Message::StateService{port, ..} => {
                     bulb.port = Some(port);
                     bulb.last_heard = now;
                 },
-                Messages::LightState{color, power, label, ..} => {
+                Message::LightState{color, power, label, ..} => {
                     bulb.name = Some(label);
                     bulb.powered = Some(power > 0);
                     bulb.color = Some(color);
                     bulb.last_heard = now;
                 }
-                Messages::LightStatePower{level} => {
+                Message::LightStatePower{level} => {
                     bulb.powered = Some(level > 0);
                     bulb.last_heard = now;
                 }
-                Messages::StateGroup{label, ..} => {
+                Message::StateGroup{label, ..} => {
                     bulb.group_label = Some(label);
                 }
-                Messages::StateLocation{label, ..} => {
+                Message::StateLocation{label, ..} => {
                     bulb.location_label = Some(label);
                 }
                 e => {

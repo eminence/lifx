@@ -51,7 +51,10 @@ pub struct LifxIdent([u8; 16]);
 pub struct LifxString(String);
 impl LifxString {
     pub fn new(s: &str) -> LifxString {
-        LifxString(s.to_owned())
+        LifxString(
+            if s.len() > 32 { s[..32].to_owned() }
+            else { s.to_owned()}
+            )
     }
 }
 
@@ -231,7 +234,7 @@ macro_rules! unpack {
             let $n = $t::read_val(&mut c);
         )*
 
-        Messages::$typ{
+        Message::$typ{
             $(
                 $n:$n,
             )*
@@ -248,7 +251,7 @@ macro_rules! unpack {
 /// Note that other message types exist, but are not officially documented (and so are not
 /// available here).
 #[derive(Clone, Debug)]
-pub enum Messages {
+pub enum Message {
 
     /// GetService - 2
     /// Sent by a client to acquire responses from all devices on the local network. No payload is
@@ -441,7 +444,7 @@ pub enum Messages {
     /// Acknowledgement - 45
     ///
     /// Response to any message sent with ack_required set to 1. See message header frame address.
-    Acknowledgement,
+    Acknowledgement{seq: u8},
 
     /// GetLocation - 48
     ///
@@ -556,55 +559,55 @@ pub enum Messages {
 }
 
 
-impl Messages {
+impl Message {
     pub fn get_num(&self) -> u16 {
         match self {
-            &Messages::GetService => 2,
-            &Messages::StateService{..} => 3,
-            &Messages::GetHostInfo => 12,
-            &Messages::StateHostInfo{..} => 13,
-            &Messages::GetHostFirmware => 14,
-            &Messages::StateHostFirmware{..} => 15,
-            &Messages::GetWifiInfo => 16,
-            &Messages::StateWifiInfo{..} => 17,
-            &Messages::GetWifiFirmware => 18,
-            &Messages::StateWifiFirmware{..} => 19,
-            &Messages::GetPower => 20,
-            &Messages::SetPower{..} => 21,
-            &Messages::StatePower{..} => 22,
-            &Messages::GetLabel => 23,
-            &Messages::SetLabel{..} => 24,
-            &Messages::StateLabel{..} => 25,
-            &Messages::GetVersion => 32,
-            &Messages::StateVersion{..} => 33,
-            &Messages::GetInfo => 34,
-            &Messages::StateInfo{..} => 35,
-            &Messages::Acknowledgement => 45,
-            &Messages::GetLocation => 48,
-            &Messages::StateLocation{..} => 50,
-            &Messages::GetGroup => 51,
-            &Messages::StateGroup{..} => 53,
-            &Messages::EchoRequest{..} => 58,
-            &Messages::EchoResponse{..} => 59,
-            &Messages::LightGet => 101,
-            &Messages::LightSetColor{..} => 102,
-            &Messages::LightState{..} => 107,
-            &Messages::LightGetPower => 116,
-            &Messages::LightSetPower{..} => 117,
-            &Messages::LightStatePower{..} => 118
+            &Message::GetService => 2,
+            &Message::StateService{..} => 3,
+            &Message::GetHostInfo => 12,
+            &Message::StateHostInfo{..} => 13,
+            &Message::GetHostFirmware => 14,
+            &Message::StateHostFirmware{..} => 15,
+            &Message::GetWifiInfo => 16,
+            &Message::StateWifiInfo{..} => 17,
+            &Message::GetWifiFirmware => 18,
+            &Message::StateWifiFirmware{..} => 19,
+            &Message::GetPower => 20,
+            &Message::SetPower{..} => 21,
+            &Message::StatePower{..} => 22,
+            &Message::GetLabel => 23,
+            &Message::SetLabel{..} => 24,
+            &Message::StateLabel{..} => 25,
+            &Message::GetVersion => 32,
+            &Message::StateVersion{..} => 33,
+            &Message::GetInfo => 34,
+            &Message::StateInfo{..} => 35,
+            &Message::Acknowledgement{..} => 45,
+            &Message::GetLocation => 48,
+            &Message::StateLocation{..} => 50,
+            &Message::GetGroup => 51,
+            &Message::StateGroup{..} => 53,
+            &Message::EchoRequest{..} => 58,
+            &Message::EchoResponse{..} => 59,
+            &Message::LightGet => 101,
+            &Message::LightSetColor{..} => 102,
+            &Message::LightState{..} => 107,
+            &Message::LightGetPower => 116,
+            &Message::LightSetPower{..} => 117,
+            &Message::LightStatePower{..} => 118
         }
     }
 
-    pub fn from_raw(msg: &RawMessage) -> Option<Messages> {
+    pub fn from_raw(msg: &RawMessage) -> Option<Message> {
         use std::io::Cursor;
         match msg.protocol_header.typ {
-            2 => Some(Messages::GetService),
+            2 => Some(Message::GetService),
             3 => {
                 Some(unpack!(msg, StateService, 
                              service:u8,
                              port:u32))
             }
-            12 => Some(Messages::GetHostInfo),
+            12 => Some(Message::GetHostInfo),
             13 => {
                 Some(unpack!(msg, StateHostInfo,
                              signal: f32,
@@ -612,14 +615,14 @@ impl Messages {
                              rx: u32,
                              reserved: i16))
             }
-            14 => Some(Messages::GetHostFirmware),
+            14 => Some(Message::GetHostFirmware),
             15 => {
                 Some(unpack!(msg, StateHostFirmware,
                              build: u64,
                              reserved: u64,
                              version: u32))
             }
-            16 => Some(Messages::GetWifiInfo),
+            16 => Some(Message::GetWifiInfo),
             17 => {
                 Some(unpack!(msg, StateWifiInfo,
                              signal: f32,
@@ -627,28 +630,28 @@ impl Messages {
                              rx: u32,
                              reserved: i16))
             }
-            18 => Some(Messages::GetWifiFirmware),
+            18 => Some(Message::GetWifiFirmware),
             19 => {
                 Some(unpack!(msg, StateWifiFirmware,
                              build: u64,
                              reserved: u64,
                              version: u32))
             }
-            20 => Some(Messages::GetPower),
-            32 => Some(Messages::GetVersion),
+            20 => Some(Message::GetPower),
+            32 => Some(Message::GetVersion),
             33 => {
                 Some(unpack!(msg, StateVersion,
                      vendor: u32,
                      product: u32,
                      version: u32))
             }
-            45 => Some(Messages::Acknowledgement),
-            48 => Some(Messages::GetLocation),
+            45 => Some(Message::Acknowledgement{seq: msg.frame_addr.sequence}),
+            48 => Some(Message::GetLocation),
             50 => Some(unpack!(msg, StateLocation,
                                location: LifxIdent,
                                label: LifxString,
                                updated_at: u64)),
-            51 => Some(Messages::GetGroup),
+            51 => Some(Message::GetGroup),
             53 => Some(unpack!(msg, StateGroup,
                                group: LifxIdent,
                                label: LifxString, 
@@ -661,7 +664,7 @@ impl Messages {
                                payload: EchoPayload)),
             59 => Some(unpack!(msg, EchoResponse,
                                payload: EchoPayload)),
-            101 => Some(Messages::LightGet),
+            101 => Some(Message::LightGet),
             102 => Some(unpack!(msg, LightSetColor,
                                 reserved: u8,
                                 color: HSBK,
@@ -672,12 +675,12 @@ impl Messages {
                              power: u16,
                              label: LifxString,
                              reserved2: u64)),
-            116 => Some(Messages::LightGetPower),
+            116 => Some(Message::LightGetPower),
             117 => Some(unpack!(msg, LightSetPower,
                                 level: u16, duration: u32)),
             118 => {
                 let mut c = Cursor::new(&msg.payload);
-                Some(Messages::LightStatePower{level: u16::read_val(&mut c)})
+                Some(Message::LightStatePower{level: u16::read_val(&mut c)})
 
             }
             _ => { println!("unknown msg: {:?}", msg);
@@ -797,6 +800,7 @@ pub struct ProtocolHeader {
 }
 
 impl Frame {
+    /// packed sized, in bytes
     fn packed_size() -> usize { 8 }
 
     fn validate(&self) {
@@ -960,7 +964,7 @@ impl RawMessage {
     ///
     /// If `target` is None, then the message is addressed to all devices.  Else it should be a
     /// bulb UID
-    pub fn build(options: BuildOptions, typ: Messages) -> RawMessage {
+    pub fn build(options: &BuildOptions, typ: Message) -> RawMessage {
         let mut rng = thread_rng();
 
 
@@ -988,87 +992,87 @@ impl RawMessage {
 
         let mut v = Vec::new();
         match typ {
-            Messages::StateService{port, service} => {
+            Message::StateService{port, service} => {
                 v.write_val(port);
                 v.write_val(service);
             }
-            Messages::StateHostInfo{signal, tx, rx, reserved} => {
+            Message::StateHostInfo{signal, tx, rx, reserved} => {
                 v.write_val(signal);
                 v.write_val(tx);
                 v.write_val(rx);
                 v.write_val(reserved);
             }
-            Messages::StateHostFirmware{build, reserved, version} => {
+            Message::StateHostFirmware{build, reserved, version} => {
                 v.write_val(build);
                 v.write_val(reserved);
                 v.write_val(version);
             }
-            Messages::StateWifiInfo{signal, tx, rx, reserved} => {
+            Message::StateWifiInfo{signal, tx, rx, reserved} => {
                 v.write_val(signal);
                 v.write_val(tx);
                 v.write_val(rx);
                 v.write_val(reserved);
             }
-            Messages::StateWifiFirmware{build, reserved, version} => {
+            Message::StateWifiFirmware{build, reserved, version} => {
                 v.write_val(build);
                 v.write_val(reserved);
                 v.write_val(version);
             }
-            Messages::SetPower{level} => {
+            Message::SetPower{level} => {
                 v.write_val(level);
             }
-            Messages::StatePower{level} => {
+            Message::StatePower{level} => {
                 v.write_val(level);
             }
-            Messages::SetLabel{label} => {
+            Message::SetLabel{label} => {
                 v.write_val(label);
             }
-            Messages::StateLabel{label} => {
+            Message::StateLabel{label} => {
                 v.write_val(label);
             }
-            Messages::StateVersion{vendor, product, version} => {
+            Message::StateVersion{vendor, product, version} => {
                 v.write_val(vendor);
                 v.write_val(product);
                 v.write_val(version);
             }
-            Messages::StateInfo{time, uptime, downtime} => {
+            Message::StateInfo{time, uptime, downtime} => {
                 v.write_val(time);
                 v.write_val(uptime);
                 v.write_val(downtime);
             }
-            Messages::StateLocation{location, label, updated_at} => {
+            Message::StateLocation{location, label, updated_at} => {
                 v.write_val(location);
                 v.write_val(label);
                 v.write_val(updated_at);
             }
-            Messages::StateGroup{group, label, updated_at} => {
+            Message::StateGroup{group, label, updated_at} => {
                 v.write_val(group);
                 v.write_val(label);
                 v.write_val(updated_at);
             }
-            Messages::EchoRequest{payload} => {
+            Message::EchoRequest{payload} => {
                 v.write_val(payload);
             }
-            Messages::EchoResponse{payload} => {
+            Message::EchoResponse{payload} => {
                 v.write_val(payload);
             }
-            Messages::LightSetColor{reserved, color, duration} => {
+            Message::LightSetColor{reserved, color, duration} => {
                 v.write_val(reserved);
                 v.write_val(color);
                 v.write_val(duration);
             }
-            Messages::LightState{color, reserved, power, label, reserved2} => {
+            Message::LightState{color, reserved, power, label, reserved2} => {
                 v.write_val(color);
                 v.write_val(reserved);
                 v.write_val(power);
                 v.write_val(label);
                 v.write_val(reserved2);
             }
-            Messages::LightSetPower{level, duration} => {
+            Message::LightSetPower{level, duration} => {
                 v.write_val(if level > 0 { 65535u16 } else { 0u16 });
                 v.write_val(duration);
             }
-            Messages::LightStatePower{level} => {
+            Message::LightStatePower{level} => {
                 v.write_val(level); 
             }
 
