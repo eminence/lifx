@@ -43,7 +43,7 @@ pub struct Bulb {
     addr: Option<SocketAddr>,
     pub id: u64,
     last_heard: DateTime<Local>,
-    group_label: Option<LifxString>,
+    pub group_label: Option<LifxString>,
     location_label: Option<LifxString>,
 
 
@@ -202,9 +202,21 @@ impl NetManager {
     }
 
     /// Broadcasts a `LightGet` message, which causes all bulbs to identify themselves.
-    pub fn refresh_all(&self) {
+    ///
+    /// Optionally you can wait until there are at least `wait_for` bulbs in our local database
+    pub fn refresh_all(&self, wait_for: Option<u16>) {
         let msg = RawMessage::build(&BuildOptions::default(), Message::LightGet);
         self.sock.send_to(&msg.pack(),"255.255.255.255:56700").unwrap();
+        
+        let msg = RawMessage::build(&BuildOptions::default(), Message::GetGroup);
+        self.sock.send_to(&msg.pack(),"255.255.255.255:56700").unwrap();
+
+        if let Some(wait_for) = wait_for {
+            if self.mgr.lock().unwrap().bulbs.len() >= wait_for as usize { return }
+            ::std::thread::sleep_ms(1000);
+
+        }
+
     }
 
     /// Requests updated info from a bulb.

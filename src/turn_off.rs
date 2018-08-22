@@ -17,29 +17,25 @@ fn main() {
     };
 
 
-    let mgr = NetManager::new(sock);
-    mgr.refresh_all();
-    // broadcast a PowerOff to all bulbs, and then loop for a while to make sure that they are
-    // in-fact all off
-    mgr.broadcast(Messages::LightSetPower{level: 0, duration: 1000});
+    let normal_white = HSBK{hue: 0, saturation: 0, brightness: 35535, kelvin: 2750};
+    let dim_white = HSBK{hue: 0, saturation: 0, brightness: 100, kelvin: 2750};
 
-    for _ in 0..10 {
-        std::thread::sleep_ms(1000);
-        mgr.refresh_all();
-        for (uid, bulb) in mgr.bulbs() {
-            if let Some(false) = bulb.powered {
-                // ok
-            } else {
-                println!("Bulb is still on!");
-                mgr.send_msg(&bulb, Messages::LightSetPower{level: 0, duration: 250});
-            }
-            println!("{}", bulb.name.unwrap_or(LifxString::new("Unknown")));
-            println!("  Powered: {}", bulb.powered.unwrap());
-            println!("  Color:   {:?}", bulb.color);
-            println!("-----------------------------------");
-        }
-        break;
-    }
+    let mgr = NetManager::new(sock);
+    mgr.refresh_all(None);
+    std::thread::sleep_ms(10000);
+
+    // broadcast a power ON
+
+    mgr.broadcast_sync(Message::LightSetPower{level: 65535, duration: 1000}, 4);
+    mgr.broadcast_sync(Message::LightSetColor{color: normal_white, duration: 500, reserved:0}, 4);
+
+    std::thread::sleep_ms(2000);
+
+    mgr.broadcast_sync(Message::LightSetPower{level: 0, duration: 10*60*1000}, 4);
+
+    std::thread::sleep_ms(2000);
+
+    println!("done");
 
     std::thread::sleep_ms(2000);
 }

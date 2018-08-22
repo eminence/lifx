@@ -45,23 +45,24 @@ fn main () {
     let mut tmgr = TermMgr::new();
 
     let mgr = NetManager::new(sock);
-    mgr.refresh_all();
+    mgr.refresh_all(Some(4));
 
     let mut c = 0;
     loop {
         std::thread::sleep_ms(1000);
-        //tmgr.clear();
+        tmgr.clear();
         mgr.maintain();
         for (uid, bulb) in mgr.bulbs() {
             println!("{}", bulb.name.unwrap_or(LifxString::new("Unknown")));
             println!("  ID:      {}", bulb.id);
             println!("  Powered: {}", bulb.powered.unwrap());
             println!("  Color:   {:?}", bulb.color);
+            println!("  Group:   {:?}", bulb.group_label);
         }
         c += 1;
         if (c > 10) {
             c = 0;
-            mgr.refresh_all();
+            mgr.refresh_all(None);
         }
     }
 
