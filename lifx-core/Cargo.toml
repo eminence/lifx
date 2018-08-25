@@ -1,0 +1,9 @@
+[package]
+name = "lifx-core"
+version = "0.1.0"
+authors = ["Andrew Chin <achin@eminence32.net>"]
+
+[dependencies]
+byteorder = "1.2.4"
+failure = "0.1.2"
+failure_derive = "0.1.2"

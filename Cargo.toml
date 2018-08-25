@@ -3,32 +3,30 @@ name = "lifx-bin"
 version = "0.1.0"
 authors = ["Andrew Chin <achin@eminence32.net>"]
 description = "Utilities for controlling your LIFX bulbs"
-build = "build.rs"
 
-[dependencies.lalrpop-util]
-version = "0.13"
-
-[build-dependencies.lalrpop]
-version = "0.13"
+[workspace]
+members = ["lifx-core", "examples/dump_info"]
 
 [dependencies]
-lifx = {path="lifx"}
-libc = "0.2"
-term = "0.2"
-termion = "*"
-
-[[bin]]
-name = "monitor"
-path = "src/monitor.rs"
-
-[[bin]]
-name = "turn_off"
-path = "src/turn_off.rs"
-
-[[bin]]
-name = "sunrise"
-path = "src/sunrise.rs"
-
-[[bin]]
-name = "control"
-path = "src/control.rs"
+#lifx-core = {path = "lifx-core"}
+#lifx = {path="lifx"}
+#libc = "0.2"
+#term = "0.2"
+#termion = "*"
+#
+#
+#[[bin]]
+#name = "monitor"
+#path = "src/monitor.rs"
+#
+#[[bin]]
+#name = "turn_off"
+#path = "src/turn_off.rs"
+#
+#[[bin]]
+#name = "sunrise"
+#path = "src/sunrise.rs"
+#
+#[[bin]]
+#name = "control"
+#path = "src/control.rs"
