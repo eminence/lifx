@@ -76,7 +76,10 @@ impl LifxFrom<u8> for ApplicationRequest {
             0 => Ok(ApplicationRequest::NoApply),
             1 => Ok(ApplicationRequest::Apply),
             2 => Ok(ApplicationRequest::ApplyOnly),
-            x => Err(Error::ProtocolError(format!("Unknown appliation request {}", x)))
+            x => Err(Error::ProtocolError(format!(
+                "Unknown appliation request {}",
+                x
+            ))),
         }
     }
 }
@@ -84,7 +87,10 @@ impl LifxFrom<u8> for ApplicationRequest {
 impl LifxFrom<u8> for Service {
     fn from(val: u8) -> Result<Service, Error> {
         if val != Service::UDP as u8 {
-            Err(Error::ProtocolError(format!("Unknown service value {}", val)))
+            Err(Error::ProtocolError(format!(
+                "Unknown service value {}",
+                val
+            )))
         } else {
             Ok(Service::UDP)
         }
@@ -96,7 +102,7 @@ impl LifxFrom<u16> for PowerLevel {
         match val {
             x if x == PowerLevel::Enabled as u16 => Ok(PowerLevel::Enabled),
             x if x == PowerLevel::Standby as u16 => Ok(PowerLevel::Standby),
-            x => Err(Error::ProtocolError(format!("Unknown power level {}", x)))
+            x => Err(Error::ProtocolError(format!("Unknown power level {}", x))),
         }
     }
 }
@@ -152,7 +158,6 @@ trait LittleEndianWriter<T>: WriteBytesExt {
     fn write_val(&mut self, v: T) -> Result<(), io::Error>;
 }
 
-
 macro_rules! derive_writer {
 { $( $m:ident: $t:ty ),*} => {
     $(
@@ -174,10 +179,9 @@ impl<T: WriteBytesExt> LittleEndianWriter<u8> for T {
     }
 }
 
-
 impl<T> LittleEndianWriter<LifxString> for T
-    where
-        T: WriteBytesExt,
+where
+    T: WriteBytesExt,
 {
     fn write_val(&mut self, v: LifxString) -> Result<(), io::Error> {
         for idx in 0..32 {
@@ -192,8 +196,8 @@ impl<T> LittleEndianWriter<LifxString> for T
 }
 
 impl<T> LittleEndianWriter<LifxIdent> for T
-    where
-        T: WriteBytesExt,
+where
+    T: WriteBytesExt,
 {
     fn write_val(&mut self, v: LifxIdent) -> Result<(), io::Error> {
         for idx in 0..16 {
@@ -204,8 +208,8 @@ impl<T> LittleEndianWriter<LifxIdent> for T
 }
 
 impl<T> LittleEndianWriter<EchoPayload> for T
-    where
-        T: WriteBytesExt,
+where
+    T: WriteBytesExt,
 {
     fn write_val(&mut self, v: EchoPayload) -> Result<(), io::Error> {
         for idx in 0..64 {
@@ -216,8 +220,8 @@ impl<T> LittleEndianWriter<EchoPayload> for T
 }
 
 impl<T> LittleEndianWriter<HSBK> for T
-    where
-        T: WriteBytesExt,
+where
+    T: WriteBytesExt,
 {
     fn write_val(&mut self, v: HSBK) -> Result<(), io::Error> {
         self.write_val(v.hue)?;
@@ -229,17 +233,17 @@ impl<T> LittleEndianWriter<HSBK> for T
 }
 
 impl<T> LittleEndianWriter<PowerLevel> for T
-    where
-        T: WriteBytesExt,
+where
+    T: WriteBytesExt,
 {
     fn write_val(&mut self, v: PowerLevel) -> Result<(), io::Error> {
         self.write_u16::<LittleEndian>(v as u16)
     }
 }
 
-
 impl<T> LittleEndianWriter<ApplicationRequest> for T
-    where T: WriteBytesExt,
+where
+    T: WriteBytesExt,
 {
     fn write_val(&mut self, v: ApplicationRequest) -> Result<(), io::Error> {
         self.write_u8(v as u8)
@@ -265,13 +269,11 @@ macro_rules! derive_reader {
 
 derive_reader! { read_u32: u32, read_u16: u16, read_i16: i16, read_u64: u64, read_f32: f32 }
 
-
 impl<R: ReadBytesExt> LittleEndianReader<u8> for R {
     fn read_val(&mut self) -> Result<u8, io::Error> {
         self.read_u8()
     }
 }
-
 
 impl<R: ReadBytesExt> LittleEndianReader<HSBK> for R {
     fn read_val(&mut self) -> Result<HSBK, io::Error> {
@@ -321,8 +323,6 @@ impl<R: ReadBytesExt> LittleEndianReader<EchoPayload> for R {
     }
 }
 
-
-
 macro_rules! unpack {
     ($msg:ident, $typ:ident, $( $n:ident: $t:ident ),*) => {
         {
@@ -340,7 +340,6 @@ macro_rules! unpack {
 
     };
 }
-
 
 //trace_macros!(true);
 //message_types! {
@@ -382,7 +381,6 @@ pub enum ApplicationRequest {
     /// Ignore the requested changes in this message and only apply pending changes
     ApplyOnly = 2,
 }
-
 
 /// Decoded LIFX Messages
 ///
@@ -510,7 +508,9 @@ pub enum Message {
     /// Response to [Message::GetPower] message.
     ///
     /// Provides device power level.
-    StatePower { level: PowerLevel },
+    StatePower {
+        level: PowerLevel,
+    },
 
     /// GetLabel - 23
     ///
@@ -521,14 +521,18 @@ pub enum Message {
     /// SetLabel - 24
     ///
     /// Set the device label text.
-    SetLabel { label: LifxString },
+    SetLabel {
+        label: LifxString,
+    },
 
     /// StateLabel - 25
     ///
     /// Response to [Message::GetLabel] message.
     ///
     /// Provides device label.
-    StateLabel { label: LifxString },
+    StateLabel {
+        label: LifxString,
+    },
 
     /// GetVersion - 32
     ///
@@ -576,7 +580,9 @@ pub enum Message {
     ///
     /// (Note that technically this message has no payload, but the frame sequence number is stored
     /// here for convenience).
-    Acknowledgement { seq: u8 },
+    Acknowledgement {
+        seq: u8,
+    },
 
     /// GetLocation - 48
     ///
@@ -634,7 +640,9 @@ pub enum Message {
     ///
     /// Request an arbitrary payload be echoed back. Causes the device to transmit an [Message::EchoResponse]
     /// message.
-    EchoRequest { payload: EchoPayload },
+    EchoRequest {
+        payload: EchoPayload,
+    },
 
     /// EchoResponse - 59
     ///
@@ -642,7 +650,9 @@ pub enum Message {
     ///
     /// Echo response with payload sent in the EchoRequest.
     ///
-    EchoResponse { payload: EchoPayload },
+    EchoResponse {
+        payload: EchoPayload,
+    },
 
     /// Get - 101
     ///
@@ -694,7 +704,10 @@ pub enum Message {
     ///
     /// If the Frame Address res_required field is set to one (1) then the device will transmit a
     /// StatePower message.
-    LightSetPower { level: u16, duration: u32 },
+    LightSetPower {
+        level: u16,
+        duration: u32,
+    },
 
     /// StatePower - 118
     ///
@@ -702,7 +715,9 @@ pub enum Message {
     ///
     /// Field   Type
     /// level   unsigned 16-bit integer
-    LightStatePower { level: u16 },
+    LightStatePower {
+        level: u16,
+    },
 
     /// GetInfrared - 120
     ///
@@ -712,12 +727,16 @@ pub enum Message {
     /// StateInfrared - 121
     ///
     /// Indicates the current maximum setting for the infrared channel.
-    LightStateinfrared { brightness: u16 },
+    LightStateinfrared {
+        brightness: u16,
+    },
 
     /// SetInfrared -- 122
     ///
     /// Set the current maximum brightness for the infrared channel.
-    LightSetInfrared { brightness: u16 },
+    LightSetInfrared {
+        brightness: u16,
+    },
 
     SetColorZones {
         start_index: u8,
@@ -796,7 +815,7 @@ impl Message {
             &Message::SetColorZones { .. } => 501,
             &Message::GetColorZones { .. } => 502,
             &Message::StateZone { .. } => 503,
-            &Message::StateMultiZone { .. } => 506
+            &Message::StateMultiZone { .. } => 506,
         }
     }
 
@@ -804,9 +823,7 @@ impl Message {
         use std::io::Cursor;
         match msg.protocol_header.typ {
             2 => Ok(Message::GetService),
-            3 => Ok(unpack!(msg, StateService,
-                    service: u8,
-                    port: u32)),
+            3 => Ok(unpack!(msg, StateService, service: u8, port: u32)),
             12 => Ok(Message::GetHostInfo),
             13 => Ok(unpack!(
                 msg,
@@ -886,13 +903,15 @@ impl Message {
                 color: HSBK,
                 duration: u32
             )),
-            107 => Ok(unpack!(msg, LightState,
-                    color: HSBK,
-                    reserved: i16,
-                    power: u16,
-                    label: LifxString,
-                    reserved2: u64
-                )),
+            107 => Ok(unpack!(
+                msg,
+                LightState,
+                color: HSBK,
+                reserved: i16,
+                power: u16,
+                label: LifxString,
+                reserved2: u64
+            )),
             116 => Ok(Message::LightGetPower),
             117 => Ok(unpack!(msg, LightSetPower, level: u16, duration: u32)),
             118 => {
@@ -901,17 +920,16 @@ impl Message {
                     level: c.read_val()?,
                 })
             }
-            501 => {
-                Ok(unpack!(msg, SetColorZones,
+            501 => Ok(unpack!(
+                msg,
+                SetColorZones,
                 start_index: u8,
                 end_index: u8,
                 color: HSBK,
                 duration: u32,
-                apply: u8))
-            }
-            _ => {
-                Err(Error::UnknownMessageType(msg.protocol_header.typ))
-            }
+                apply: u8
+            )),
+            _ => Err(Error::UnknownMessageType(msg.protocol_header.typ)),
         }
     }
 }
@@ -1257,23 +1275,47 @@ impl RawMessage {
             | Message::LightGetInfrared => {
                 // these types have no payload
             }
-            Message::SetColorZones { start_index, end_index, color, duration, apply } => {
+            Message::SetColorZones {
+                start_index,
+                end_index,
+                color,
+                duration,
+                apply,
+            } => {
                 v.write_val(start_index)?;
                 v.write_val(end_index)?;
                 v.write_val(color)?;
                 v.write_val(duration)?;
                 v.write_val(apply)?;
             }
-            Message::GetColorZones { start_index, end_index } => {
+            Message::GetColorZones {
+                start_index,
+                end_index,
+            } => {
                 v.write_val(start_index)?;
                 v.write_val(end_index)?;
             }
-            Message::StateZone { count, index, color } => {
+            Message::StateZone {
+                count,
+                index,
+                color,
+            } => {
                 v.write_val(count)?;
                 v.write_val(index)?;
                 v.write_val(color)?;
             }
-            Message::StateMultiZone { count, index, color0, color1, color2, color3, color4, color5, color6, color7 } => {
+            Message::StateMultiZone {
+                count,
+                index,
+                color0,
+                color1,
+                color2,
+                color3,
+                color4,
+                color5,
+                color6,
+                color7,
+            } => {
                 v.write_val(count)?;
                 v.write_val(index)?;
                 v.write_val(color0)?;
