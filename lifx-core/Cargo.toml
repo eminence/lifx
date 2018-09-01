@@ -2,6 +2,9 @@
 name = "lifx-core"
 version = "0.1.0"
 authors = ["Andrew Chin <achin@eminence32.net>"]
+repository = "https://github.com/eminence/lifx"
+description = "Low-level control of LIFX bulbs on your LAN"
+license = "MIT"
 
 [dependencies]
 byteorder = "1.2.4"
