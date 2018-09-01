@@ -1,5 +1,3 @@
-#![feature(trace_macros)]
-
 //! This crate provides low-level message types and structures for dealing with the LIFX LAN protocol.
 //!
 //! This lets you control lights on your local area network.  More info can be found here:
