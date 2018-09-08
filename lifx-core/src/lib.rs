@@ -28,7 +28,6 @@ extern crate failure_derive;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::fmt;
 use std::io;
-use std::io::Read;
 
 #[derive(Fail, Debug)]
 pub enum Error {
@@ -110,9 +109,7 @@ pub struct EchoPayload([u8; 64]);
 impl std::clone::Clone for EchoPayload {
     fn clone(&self) -> EchoPayload {
         let mut p = [0; 64];
-        for x in 0..64 {
-            p[x] = self.0[x];
-        }
+        p.clone_from_slice(&self.0);
         EchoPayload(p)
     }
 }
@@ -280,7 +277,7 @@ impl<R: ReadBytesExt> LittleEndianReader<HSBK> for R {
         let bri = self.read_val()?;
         let kel = self.read_val()?;
         Ok(HSBK {
-            hue: hue,
+            hue,
             saturation: sat,
             brightness: bri,
             kelvin: kel,
@@ -291,8 +288,8 @@ impl<R: ReadBytesExt> LittleEndianReader<HSBK> for R {
 impl<R: ReadBytesExt> LittleEndianReader<LifxIdent> for R {
     fn read_val(&mut self) -> Result<LifxIdent, io::Error> {
         let mut val = [0; 16];
-        for idx in 0..16 {
-            val[idx] = self.read_val()?;
+        for v in &mut val {
+            *v = self.read_val()?;
         }
         Ok(LifxIdent(val))
     }
@@ -314,8 +311,8 @@ impl<R: ReadBytesExt> LittleEndianReader<LifxString> for R {
 impl<R: ReadBytesExt> LittleEndianReader<EchoPayload> for R {
     fn read_val(&mut self) -> Result<EchoPayload, io::Error> {
         let mut val = [0; 64];
-        for idx in 0..64 {
-            val[idx] = self.read_val()?;
+        for v in val.iter_mut() {
+            *v = self.read_val()?;
         }
         Ok(EchoPayload(val))
     }
@@ -771,49 +768,49 @@ pub enum Message {
 
 impl Message {
     pub fn get_num(&self) -> u16 {
-        match self {
-            &Message::GetService => 2,
-            &Message::StateService { .. } => 3,
-            &Message::GetHostInfo => 12,
-            &Message::StateHostInfo { .. } => 13,
-            &Message::GetHostFirmware => 14,
-            &Message::StateHostFirmware { .. } => 15,
-            &Message::GetWifiInfo => 16,
-            &Message::StateWifiInfo { .. } => 17,
-            &Message::GetWifiFirmware => 18,
-            &Message::StateWifiFirmware { .. } => 19,
-            &Message::GetPower => 20,
-            &Message::SetPower { .. } => 21,
-            &Message::StatePower { .. } => 22,
-            &Message::GetLabel => 23,
-            &Message::SetLabel { .. } => 24,
-            &Message::StateLabel { .. } => 25,
-            &Message::GetVersion => 32,
-            &Message::StateVersion { .. } => 33,
-            &Message::GetInfo => 34,
-            &Message::StateInfo { .. } => 35,
-            &Message::Acknowledgement { .. } => 45,
-            &Message::GetLocation => 48,
-            &Message::SetLocation { .. } => 49,
-            &Message::StateLocation { .. } => 50,
-            &Message::GetGroup => 51,
-            &Message::SetGroup { .. } => 52,
-            &Message::StateGroup { .. } => 53,
-            &Message::EchoRequest { .. } => 58,
-            &Message::EchoResponse { .. } => 59,
-            &Message::LightGet => 101,
-            &Message::LightSetColor { .. } => 102,
-            &Message::LightState { .. } => 107,
-            &Message::LightGetPower => 116,
-            &Message::LightSetPower { .. } => 117,
-            &Message::LightStatePower { .. } => 118,
-            &Message::LightGetInfrared => 120,
-            &Message::LightStateinfrared { .. } => 121,
-            &Message::LightSetInfrared { .. } => 122,
-            &Message::SetColorZones { .. } => 501,
-            &Message::GetColorZones { .. } => 502,
-            &Message::StateZone { .. } => 503,
-            &Message::StateMultiZone { .. } => 506,
+        match *self {
+            Message::GetService => 2,
+            Message::StateService { .. } => 3,
+            Message::GetHostInfo => 12,
+            Message::StateHostInfo { .. } => 13,
+            Message::GetHostFirmware => 14,
+            Message::StateHostFirmware { .. } => 15,
+            Message::GetWifiInfo => 16,
+            Message::StateWifiInfo { .. } => 17,
+            Message::GetWifiFirmware => 18,
+            Message::StateWifiFirmware { .. } => 19,
+            Message::GetPower => 20,
+            Message::SetPower { .. } => 21,
+            Message::StatePower { .. } => 22,
+            Message::GetLabel => 23,
+            Message::SetLabel { .. } => 24,
+            Message::StateLabel { .. } => 25,
+            Message::GetVersion => 32,
+            Message::StateVersion { .. } => 33,
+            Message::GetInfo => 34,
+            Message::StateInfo { .. } => 35,
+            Message::Acknowledgement { .. } => 45,
+            Message::GetLocation => 48,
+            Message::SetLocation { .. } => 49,
+            Message::StateLocation { .. } => 50,
+            Message::GetGroup => 51,
+            Message::SetGroup { .. } => 52,
+            Message::StateGroup { .. } => 53,
+            Message::EchoRequest { .. } => 58,
+            Message::EchoResponse { .. } => 59,
+            Message::LightGet => 101,
+            Message::LightSetColor { .. } => 102,
+            Message::LightState { .. } => 107,
+            Message::LightGetPower => 116,
+            Message::LightSetPower { .. } => 117,
+            Message::LightStatePower { .. } => 118,
+            Message::LightGetInfrared => 120,
+            Message::LightStateinfrared { .. } => 121,
+            Message::LightSetInfrared { .. } => 122,
+            Message::SetColorZones { .. } => 501,
+            Message::GetColorZones { .. } => 502,
+            Message::StateZone { .. } => 503,
+            Message::StateMultiZone { .. } => 506,
         }
     }
 
@@ -1062,10 +1059,10 @@ impl Frame {
         v.write_u16::<LittleEndian>(self.size)?;
 
         // pack origin + tagged + addressable +  protocol as a u16
-        let mut d: u16 = ((self.origin as u16 & 0b11) << 14) as u16;
+        let mut d: u16 = (<u16 as From<u8>>::from(self.origin) & 0b11) << 14;
         d += if self.tagged { 1 } else { 0 } << 13;
         d += if self.addressable { 1 } else { 0 } << 12;
-        d += (self.protocol & 0b111111111111) as u16;
+        d += (self.protocol & 0b1111_1111_1111) as u16;
 
         v.write_u16::<LittleEndian>(d)?;
 
@@ -1082,10 +1079,10 @@ impl Frame {
         // origin + tagged + addressable + protocol
         let d: u16 = c.read_val()?;
 
-        let origin: u8 = ((d & 0b1100000000000000) >> 14) as u8;
-        let tagged: bool = (d & 0b0010000000000000) > 0;
-        let addressable = (d & 0b0001000000000000) > 0;
-        let protocol: u16 = d & 0b0000111111111111;
+        let origin: u8 = ((d & 0b1100_0000_0000_0000) >> 14) as u8;
+        let tagged: bool = (d & 0b0010_0000_0000_0000) > 0;
+        let addressable = (d & 0b0001_0000_0000_0000) > 0;
+        let protocol: u16 = d & 0b0000_1111_1111_1111;
 
         if protocol != 1024 {
             return Err(Error::ProtocolError(format!(
@@ -1138,12 +1135,12 @@ impl FrameAddress {
         let target = c.read_val()?;
 
         let mut reserved: [u8; 6] = [0; 6];
-        for idx in 0..6 {
-            reserved[idx] = c.read_val()?;
+        for slot in &mut reserved {
+            *slot = c.read_val()?;
         }
 
         let b: u8 = c.read_val()?;
-        let reserved2: u8 = (b & 0b11111100) >> 2;
+        let reserved2: u8 = (b & 0b1111_1100) >> 2;
         let ack_required = (b & 0b10) > 0;
         let res_required = (b & 0b01) > 0;
 
@@ -1475,7 +1472,7 @@ impl RawMessage {
         }
 
         let mut msg = RawMessage {
-            frame: frame,
+            frame,
             frame_addr: addr,
             protocol_header: phead,
             payload: v,
@@ -1527,7 +1524,7 @@ impl RawMessage {
         let body = Vec::from(&v[start..(frame.size as usize)]);
 
         Ok(RawMessage {
-            frame: frame,
+            frame,
             frame_addr: addr,
             protocol_header: proto,
             payload: body,
