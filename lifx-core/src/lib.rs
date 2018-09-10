@@ -9,7 +9,10 @@
 //! # Discovery
 //!
 //! To discover lights on your LAN, send a [Message::GetService] message as a UDP broadcast to port 56700
-//! When a device is discovered, the [Service] types and IP port are provided
+//! When a device is discovered, the [Service] types and IP port are provided.  To get additional
+//! info about each device, send additional Get messages directly to each device (by setting the
+//! [FrameAddress::target] field to the bulbs target ID, and then send a UDP packet to the IP address
+//! associated with the device).
 //!
 //! # Reserved fields
 //! When *constructing* packets, you must always set every reserved field to zero.  However, it's
@@ -29,9 +32,18 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::fmt;
 use std::io;
 
+/// Various message encoding/decoding errors
 #[derive(Fail, Debug)]
 pub enum Error {
+    /// This error means we were unable to parse a raw message because its type is unknown.
+    ///
+    /// LIFX devices are known to send messages that are not officially documented, so this error
+    /// type does not necessarily represent a bug.
     UnknownMessageType(u16),
+
+    /// This error means one of the message fields contains an invalid or unsupported value.
+    ///
+    /// The inner string is a description of the error.
     ProtocolError(String),
     Io(#[cause] io::Error),
 }
@@ -74,7 +86,7 @@ impl LifxFrom<u8> for ApplicationRequest {
             1 => Ok(ApplicationRequest::Apply),
             2 => Ok(ApplicationRequest::ApplyOnly),
             x => Err(Error::ProtocolError(format!(
-                "Unknown appliation request {}",
+                "Unknown application request {}",
                 x
             ))),
         }
@@ -128,6 +140,7 @@ pub struct LifxIdent(pub [u8; 16]);
 pub struct LifxString(pub String);
 
 impl LifxString {
+    /// Constructs a new LifxString, truncating to 32 characters.
     pub fn new(s: &str) -> LifxString {
         LifxString(if s.len() > 32 {
             s[..32].to_owned()
@@ -371,10 +384,13 @@ pub enum PowerLevel {
     Enabled = 65535,
 }
 
+/// Controls how/when multizone devices apply color changes
+///
+/// See also [Message::SetColorZones].
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 pub enum ApplicationRequest {
-    /// DOn't apply the requested changes until a message with Apply or ApplyOnly is sent
+    /// Don't apply the requested changes until a message with Apply or ApplyOnly is sent
     NoApply = 0,
     /// Apply the changes immediately and apply any pending changes
     Apply = 1,
@@ -738,6 +754,11 @@ pub enum Message {
         brightness: u16,
     },
 
+    /// SetColorZones - 501
+    ///
+    /// This message is used for changing the color of either a single or multiple zones.
+    /// The changes are stored in a buffer and are only applied once a message with either
+    /// [ApplicationRequest::Apply] or [ApplicationRequest::ApplyOnly] set.
     SetColorZones {
         start_index: u8,
         end_index: u8,
@@ -746,17 +767,36 @@ pub enum Message {
         apply: ApplicationRequest,
     },
 
+    /// GetColorZones - 502
+    ///
+    /// GetColorZones is used to request the zone colors for a range of zones. The bulb will respond
+    /// with either [Message::StateZone] or [Message::StateMultiZone] messages as required to cover
+    /// the requested range. The bulb may send state messages that cover more than the requested
+    /// zones. Any zones outside the requested indexes will still contain valid values at the time
+    /// the message was sent.
     GetColorZones {
         start_index: u8,
         end_index: u8,
     },
 
+    /// StateZone - 503
+
+    /// The StateZone message represents the state of a single zone with the `index` field indicating
+    /// which zone is represented. The `count` field contains the count of the total number of zones
+    /// available on the device.
     StateZone {
         count: u8,
         index: u8,
         color: HSBK,
     },
 
+    /// StateMultiZone - 506
+    ///
+    /// The StateMultiZone message represents the state of eight consecutive zones in a single message.
+    /// As in the StateZone message the `count` field represents the count of the total number of
+    /// zones available on the device. In this message the `index` field represents the index of
+    /// `color0` and the rest of the colors are the consecutive zones thus the index of the
+    /// `color_n` zone will be `index + n`.
     StateMultiZone {
         count: u8,
         index: u8,
@@ -819,6 +859,7 @@ impl Message {
         }
     }
 
+    /// Tries to parse the payload in a [RawMessage], based on its message type.
     pub fn from_raw(msg: &RawMessage) -> Result<Message, Error> {
         use std::io::Cursor;
         match msg.protocol_header.typ {
@@ -960,7 +1001,7 @@ impl Message {
 
 /// Bulb color (Hue-Saturation-Brightness-Kelvin)
 ///
-/// A note on colors:
+/// # Notes:
 ///
 /// Colors are represented as Hue-Saturation-Brightness-Kelvin, or HSBK
 ///
@@ -969,13 +1010,9 @@ impl Message {
 ///
 /// Normal values for "kelvin" are from 2500 (warm/yellow) to 9000 (cool/blue)
 ///
-/// When a light is displaying colors, kelvin is ignored.  At 100% brightness, brightness=65535 and
-/// saturation is about 1300.
+/// When a light is displaying colors, kelvin is ignored.
 ///
-/// When comparing to the LIFX mobile app:As brightness wheel decreases to 50%, saturation rises to
-/// 65535, while brightness stays at 65535.
-///
-/// As brightness wheel decreases to 0%, saturation stays the same while brightness decreases to 0.
+/// To display "pure" colors, set saturation to full (65535).
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct HSBK {
     pub hue: u16,
@@ -1048,7 +1085,9 @@ impl HSBK {
 
 /// The raw message structure
 ///
-/// Contains a low-level protocol info.  This is what is sent and received via UDP packets
+/// Contains a low-level protocol info.  This is what is sent and received via UDP packets.
+///
+/// To parse the payload, use [Message::from_raw].
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawMessage {
     pub frame: Frame,
@@ -1285,19 +1324,36 @@ impl ProtocolHeader {
     }
 }
 
+/// Options used to contruct a [RawMessage].
+///
+/// See also [RawMessage::build].
 #[derive(Debug, Clone)]
 pub struct BuildOptions {
+    /// If not `None`, this is the ID of the device you want to address.
+    ///
+    /// To look up the ID of a device, extract it from the [FrameAddress::target] field when a
+    /// device sends a [Message::StateService] message.
     pub target: Option<u64>,
     /// Acknowledgement message required.
     ///
-    /// Causes the light to send an [Message::Acknoledgement] message.
+    /// Causes the light to send an [Message::Acknowledgement] message.
     pub ack_required: bool,
     /// Response message required.
     ///
     /// Some message types are sent by clients to get data from a light.  These should always have
     /// `res_required` set to true.
     pub res_required: bool,
+    /// A wrap around sequence number.  Optional (can be zero).
+    ///
+    /// By providing a unique sequence value, the response message will also contain the same
+    /// sequence number, allowing a client to distinguish between different messages sent with the
+    /// same `source` identifier.
     pub sequence: u8,
+    /// A unique client identifier. Optional (can be zero).
+    ///
+    /// If the source is non-zero, then the LIFX device with send a unicast message to the IP
+    /// address/port of the client that sent the originating message.  If zero, then the LIFX
+    /// device may send a broadcast message that can be received by all clients on the same sub-net.
     pub source: u32,
 }
 
@@ -1317,7 +1373,7 @@ impl RawMessage {
     /// Build a RawMessage (which is suitable for sending on the network) from a given Message
     /// type.
     ///
-    /// If `target` is None, then the message is addressed to all devices.  Else it should be a
+    /// If [BuildOptions::target] is None, then the message is addressed to all devices.  Else it should be a
     /// bulb UID (MAC address)
     pub fn build(options: &BuildOptions, typ: Message) -> Result<RawMessage, Error> {
         let frame = Frame {
@@ -1574,7 +1630,7 @@ impl RawMessage {
         Ok(msg)
     }
 
-    // The total size (in bytes) of the packed version of this message.
+    /// The total size (in bytes) of the packed version of this message.
     pub fn packed_size(&self) -> usize {
         Frame::packed_size()
             + FrameAddress::packed_size()
@@ -1590,6 +1646,8 @@ impl RawMessage {
     }
 
     /// Packs this RawMessage into some bytes that can be send over the network.
+    ///
+    /// The length of the returned data will be [RawMessage::packed_size] in size.
     pub fn pack(&self) -> Result<Vec<u8>, Error> {
         let mut v = Vec::with_capacity(self.packed_size());
         v.extend(self.frame.pack()?);
