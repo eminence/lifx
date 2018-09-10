@@ -1,11 +1,11 @@
 [package]
 name = "lifx-bin"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Andrew Chin <achin@eminence32.net>"]
 description = "Utilities for controlling your LIFX bulbs"
 
 [workspace]
-members = ["lifx-core", "examples/dump_info"]
+members = ["lifx-core", "examples/dump_info", "utils/get_all_info"]
 
 [dependencies]
 #lifx-core = {path = "lifx-core"}

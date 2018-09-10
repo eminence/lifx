@@ -104,7 +104,7 @@ impl LifxFrom<u16> for PowerLevel {
     }
 }
 
-pub struct EchoPayload([u8; 64]);
+pub struct EchoPayload(pub [u8; 64]);
 
 impl std::clone::Clone for EchoPayload {
     fn clone(&self) -> EchoPayload {
@@ -121,11 +121,11 @@ impl std::fmt::Debug for EchoPayload {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct LifxIdent([u8; 16]);
+pub struct LifxIdent(pub [u8; 16]);
 
 /// Lifx strings are fixed-length (32-bytes maximum)
 #[derive(Debug, Clone, PartialEq)]
-pub struct LifxString(String);
+pub struct LifxString(pub String);
 
 impl LifxString {
     pub fn new(s: &str) -> LifxString {
@@ -353,6 +353,11 @@ macro_rules! unpack {
 //}
 //trace_macros!(false);
 
+/// What services are exposed by the device.
+///
+/// LIFX only documents the UDP service, though bulbs may support other undocumented services.
+/// Since these other services are unsupported by the lifx-core library, a message with a non-UDP
+/// service cannot be constructed.
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 pub enum Service {
@@ -360,7 +365,7 @@ pub enum Service {
 }
 
 #[repr(u16)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PowerLevel {
     Standby = 0,
     Enabled = 65535,
@@ -416,7 +421,7 @@ pub enum Message {
     StateHostInfo {
         /// radio receive signal strength in miliWatts
         signal: f32,
-        /// Bytes transmitted since power rof
+        /// Bytes transmitted since power on
         tx: u32,
         /// Bytes received since power on
         rx: u32,
@@ -722,7 +727,7 @@ pub enum Message {
     /// StateInfrared - 121
     ///
     /// Indicates the current maximum setting for the infrared channel.
-    LightStateinfrared {
+    LightStateInfrared {
         brightness: u16,
     },
 
@@ -805,7 +810,7 @@ impl Message {
             Message::LightSetPower { .. } => 117,
             Message::LightStatePower { .. } => 118,
             Message::LightGetInfrared => 120,
-            Message::LightStateinfrared { .. } => 121,
+            Message::LightStateInfrared { .. } => 121,
             Message::LightSetInfrared { .. } => 122,
             Message::SetColorZones { .. } => 501,
             Message::GetColorZones { .. } => 502,
@@ -854,6 +859,17 @@ impl Message {
                 version: u32
             )),
             20 => Ok(Message::GetPower),
+            22 => Ok(unpack!(
+                msg,
+                StatePower,
+                level: u16
+            )),
+            23 => Ok(Message::GetLabel),
+            25 => Ok(unpack!(
+                msg,
+                StateLabel,
+                label: LifxString
+            )),
             32 => Ok(Message::GetVersion),
             33 => Ok(unpack!(
                 msg,
@@ -862,6 +878,11 @@ impl Message {
                 product: u32,
                 version: u32
             )),
+            35 => Ok(unpack!(msg,
+                StateInfo,
+                time: u64,
+                uptime: u64,
+                downtime: u64)),
             45 => Ok(Message::Acknowledgement {
                 seq: msg.frame_addr.sequence,
             }),
@@ -880,13 +901,6 @@ impl Message {
                 group: LifxIdent,
                 label: LifxString,
                 updated_at: u64
-            )),
-            54 => Ok(unpack!(
-                msg,
-                StateInfo,
-                time: u64,
-                uptime: u64,
-                downtime: u64
             )),
             58 => Ok(unpack!(msg, EchoRequest, payload: EchoPayload)),
             59 => Ok(unpack!(msg, EchoResponse, payload: EchoPayload)),
@@ -915,6 +929,7 @@ impl Message {
                     level: c.read_val()?,
                 })
             }
+            121 => Ok(unpack!(msg, LightStateInfrared, brightness: u16)),
             501 => Ok(unpack!(
                 msg,
                 SetColorZones,
@@ -923,6 +938,20 @@ impl Message {
                 color: HSBK,
                 duration: u32,
                 apply: u8
+            )),
+            502 => Ok(unpack!(msg, GetColorZones, start_index: u8, end_index: u8)),
+            503 => Ok(unpack!(msg, StateZone, count: u8, index: u8, color: HSBK)),
+            506 => Ok(unpack!(msg, StateMultiZone,
+                count: u8,
+                index: u8,
+                color0: HSBK,
+                color1: HSBK,
+                color2: HSBK,
+                color3: HSBK,
+                color4: HSBK,
+                color5: HSBK,
+                color6: HSBK,
+                color7: HSBK
             )),
             _ => Err(Error::UnknownMessageType(msg.protocol_header.typ)),
         }
@@ -953,6 +982,68 @@ pub struct HSBK {
     pub saturation: u16,
     pub brightness: u16,
     pub kelvin: u16,
+}
+
+impl HSBK {
+    pub fn describe(&self, short: bool) -> String {
+        if short {
+            if self.saturation == 0 {
+                format!("{}K", self.kelvin)
+            } else {
+                format!("{:.0}/{:.0}", (self.hue as f32 / 65535.0) * 360.0, self.saturation  as f32 / 655.35)
+            }
+        } else {
+            if self.saturation == 0 {
+                format!("{:.0}% White ({})", self.brightness as f32 / 655.35, describe_kelvin(self.kelvin))
+            } else { // colors
+                format!("{}% hue: {} sat: {}", self.brightness as f32 / 655.35, self.hue, self.saturation)
+            }
+        }
+    }
+
+}
+
+/// Describe (in english words) the color temperature as given in kelvin.
+///
+/// These descriptions match the values shown in the LIFX mobile app.
+pub fn describe_kelvin(k: u16) -> &'static str {
+    if k <= 2500 {
+        "Ultra Warm"
+    } else if k > 2500 && k <= 2700 {
+        "Incandescent"
+    } else if k > 2700 && k <= 3000 {
+        "Warm"
+    } else if k > 300 && k <= 3200 {
+        "Neutral Warm"
+    } else if k > 3200 && k <= 3500 {
+        "Neutral"
+    } else if k > 3500 && k <= 4000 {
+        "Cool"
+    } else if k > 400 && k <= 4500 {
+        "Cool Daylight"
+    } else if k > 4500 && k <= 5000 {
+        "Soft Daylight"
+    } else if k > 5000 && k <= 5500 {
+        "Daylight"
+    } else if k > 5500 && k <= 6000 {
+        "Noon Daylight"
+    } else if k > 6000 && k <= 6500 {
+        "Bright Daylight"
+    } else if k > 6500 && k <= 7000 {
+        "Cloudy Daylight"
+    } else if k > 7000 && k <= 7500 {
+        "Blue Daylight"
+    } else if k > 7500 && k <= 8000 {
+        "Blue Overcast"
+    } else if k > 8000 && k <= 8500 {
+        "Blue Water"
+    } else {
+        "Blue Ice"
+    }
+}
+
+impl HSBK {
+
 }
 
 /// The raw message structure
@@ -1322,7 +1413,7 @@ impl RawMessage {
                 v.write_val(color6)?;
                 v.write_val(color7)?;
             }
-            Message::LightStateinfrared { brightness } => v.write_val(brightness)?,
+            Message::LightStateInfrared { brightness } => v.write_val(brightness)?,
             Message::LightSetInfrared { brightness } => v.write_val(brightness)?,
             Message::SetLocation {
                 location,
