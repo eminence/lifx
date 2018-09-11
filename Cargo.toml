@@ -3,6 +3,10 @@ name = "lifx"
 version = "0.2.0"
 authors = ["Andrew Chin <achin@eminence32.net>"]
 description = "Utilities for controlling your LIFX bulbs"
+repository = "https://github.com/eminence/lifx"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
 
 [workspace]
 members = ["lifx-core", "examples/multizone_test", "examples/waveform_test", "utils/get_all_info"]

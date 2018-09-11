@@ -81,7 +81,7 @@ dependencies = [
  "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "get_if_addrs 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "lifx-core 0.1.0",
+ "lifx-core 0.2.0",
 ]
 
 [[package]]
@@ -115,7 +115,7 @@ version = "0.2.0"
 
 [[package]]
 name = "lifx-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "byteorder 1.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -126,7 +126,7 @@ dependencies = [
 name = "multizone_test"
 version = "0.1.0"
 dependencies = [
- "lifx-core 0.1.0",
+ "lifx-core 0.2.0",
 ]
 
 [[package]]
@@ -208,7 +208,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "waveform_test"
 version = "0.1.0"
 dependencies = [
- "lifx-core 0.1.0",
+ "lifx-core 0.2.0",
 ]
 
 [[package]]
