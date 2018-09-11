@@ -1,3 +1,5 @@
+#![deny(overflowing_literals)]
+
 //! This crate provides low-level message types and structures for dealing with the LIFX LAN protocol.
 //!
 //! This lets you control lights on your local area network.  More info can be found here:
@@ -87,6 +89,22 @@ impl LifxFrom<u8> for ApplicationRequest {
             2 => Ok(ApplicationRequest::ApplyOnly),
             x => Err(Error::ProtocolError(format!(
                 "Unknown application request {}",
+                x
+            ))),
+        }
+    }
+}
+
+impl LifxFrom<u8> for Waveform {
+    fn from(val: u8) -> Result<Waveform, Error> {
+        match val {
+            0 => Ok(Waveform::Saw),
+            1 => Ok(Waveform::Sine),
+            2 => Ok(Waveform::HalfSign),
+            3 => Ok(Waveform::Triangle),
+            4 => Ok(Waveform::Pulse),
+            x => Err(Error::ProtocolError(format!(
+                "Unknown waveform value {}",
                 x
             ))),
         }
@@ -187,6 +205,12 @@ impl<T: WriteBytesExt> LittleEndianWriter<u8> for T {
     }
 }
 
+impl<T: WriteBytesExt> LittleEndianWriter<bool> for T {
+    fn write_val(&mut self, v: bool) -> Result<(), io::Error> {
+        self.write_u8(if v { 1 } else { 0 })
+    }
+}
+
 impl<T> LittleEndianWriter<LifxString> for T
 where
     T: WriteBytesExt,
@@ -254,6 +278,15 @@ where
     T: WriteBytesExt,
 {
     fn write_val(&mut self, v: ApplicationRequest) -> Result<(), io::Error> {
+        self.write_u8(v as u8)
+    }
+}
+
+impl<T> LittleEndianWriter<Waveform> for T
+    where
+        T: WriteBytesExt,
+{
+    fn write_val(&mut self, v: Waveform) -> Result<(), io::Error> {
         self.write_u8(v as u8)
     }
 }
@@ -396,6 +429,16 @@ pub enum ApplicationRequest {
     Apply = 1,
     /// Ignore the requested changes in this message and only apply pending changes
     ApplyOnly = 2,
+}
+
+#[repr(u8)]
+#[derive(Debug, Copy, Clone)]
+pub enum Waveform {
+    Saw = 0,
+    Sine = 1,
+    HalfSign = 2,
+    Triangle = 3,
+    Pulse = 4
 }
 
 /// Decoded LIFX Messages
@@ -690,6 +733,24 @@ pub enum Message {
         duration: u32,
     },
 
+    /// SetWaveform - 103
+    ///
+    /// Apply an effect to the bulb.
+    SetWaveform {
+        reserved: u8,
+        transient: bool,
+        color: HSBK,
+        /// Duration of a cycle in milliseconds
+        period: u32,
+        /// Number of cycles
+        cycles: f32,
+
+        /// Waveform Skew, [-32768, 32767] scaled to [0, 1].
+        skew_ratio: i16,
+        /// 	Waveform to use for transition.
+        waveform: Waveform,
+    },
+
     /// State - 107
     ///
     /// Sent by a device to provide the current light state.
@@ -733,6 +794,27 @@ pub enum Message {
     /// level   unsigned 16-bit integer
     LightStatePower {
         level: u16,
+    },
+
+
+    /// SetWaveformOptional - 119
+   ///
+   /// Apply an effect to the bulb.
+    SetWaveformOptional {
+        reserved: u8,
+        transient: bool,
+        color: HSBK,
+        /// Duration of a cycle in milliseconds
+        period: u32,
+        /// Number of cycles
+        cycles: f32,
+
+        skew_ratio: i16,
+        waveform: Waveform,
+        set_hue: bool,
+        set_saturation: bool,
+        set_brightness: bool,
+        set_kelvin: bool
     },
 
     /// GetInfrared - 120
@@ -845,10 +927,12 @@ impl Message {
             Message::EchoResponse { .. } => 59,
             Message::LightGet => 101,
             Message::LightSetColor { .. } => 102,
+            Message::SetWaveform { .. } => 103,
             Message::LightState { .. } => 107,
             Message::LightGetPower => 116,
             Message::LightSetPower { .. } => 117,
             Message::LightStatePower { .. } => 118,
+            Message::SetWaveformOptional { .. } => 119,
             Message::LightGetInfrared => 120,
             Message::LightStateInfrared { .. } => 121,
             Message::LightSetInfrared { .. } => 122,
@@ -1429,6 +1513,48 @@ impl RawMessage {
                 v.write_val(color)?;
                 v.write_val(duration)?;
                 v.write_val(apply)?;
+            }
+            Message::SetWaveform {
+                reserved,
+                transient,
+                color,
+                period,
+                cycles,
+                skew_ratio,
+                waveform
+            } => {
+                v.write_val(reserved)?;
+                v.write_val(transient)?;
+                v.write_val(color)?;
+                v.write_val(period)?;
+                v.write_val(cycles)?;
+                v.write_val(skew_ratio)?;
+                v.write_val(waveform)?;
+            }
+            Message::SetWaveformOptional {
+                reserved,
+                transient,
+                color,
+                period,
+                cycles,
+                skew_ratio,
+                waveform,
+                set_hue,
+                set_saturation,
+                set_brightness,
+                set_kelvin
+            } => {
+                v.write_val(reserved)?;
+                v.write_val(transient)?;
+                v.write_val(color)?;
+                v.write_val(period)?;
+                v.write_val(cycles)?;
+                v.write_val(skew_ratio)?;
+                v.write_val(waveform)?;
+                v.write_val(set_hue)?;
+                v.write_val(set_saturation)?;
+                v.write_val(set_brightness)?;
+                v.write_val(set_kelvin)?;
             }
             Message::GetColorZones {
                 start_index,
