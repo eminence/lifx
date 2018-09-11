@@ -1,5 +1,5 @@
 [package]
-name = "dump_info"
+name = "multizone_test"
 version = "0.1.0"
 authors = ["Andrew Chin <achin@eminence32.net>"]
 

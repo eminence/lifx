@@ -178,9 +178,9 @@ impl BulbInfo {
     fn print(&self) {
         if let Some(name) = self.name.as_ref() {
             if let Some(loc) = self.location.as_ref() {
-                print!("{}/{} ({})", name, loc, self.target);
+                print!("{}/{} ({:0>16X} - {})", name, loc, self.target, self.addr);
             } else {
-                print!("{} ({})", name, self.target);
+                print!("{} ({:0>16X} - {})", name, self.target, self.addr);
             }
         } else {
             print!("({})", self.target);

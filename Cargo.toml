@@ -5,7 +5,7 @@ authors = ["Andrew Chin <achin@eminence32.net>"]
 description = "Utilities for controlling your LIFX bulbs"
 
 [workspace]
-members = ["lifx-core", "examples/dump_info", "utils/get_all_info"]
+members = ["lifx-core", "examples/multizone_test", "examples/waveform_test", "utils/get_all_info"]
 
 [dependencies]
 #lifx-core = {path = "lifx-core"}

@@ -50,13 +50,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dump_info"
-version = "0.1.0"
-dependencies = [
- "lifx-core 0.1.0",
-]
-
-[[package]]
 name = "failure"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -127,6 +120,13 @@ dependencies = [
  "byteorder 1.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure_derive 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "multizone_test"
+version = "0.1.0"
+dependencies = [
+ "lifx-core 0.1.0",
 ]
 
 [[package]]
@@ -203,6 +203,13 @@ dependencies = [
 name = "unicode-xid"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "waveform_test"
+version = "0.1.0"
+dependencies = [
+ "lifx-core 0.1.0",
+]
 
 [[package]]
 name = "winapi"
