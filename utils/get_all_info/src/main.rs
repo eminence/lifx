@@ -1,6 +1,3 @@
-#![deny(deprecated)]
-#![allow(dead_code, unused_variables)]
-
 extern crate chrono;
 extern crate failure;
 extern crate get_if_addrs;
@@ -10,8 +7,6 @@ use lifx_core::get_product_info;
 use lifx_core::BuildOptions;
 use lifx_core::Message;
 use lifx_core::RawMessage;
-
-use failure::Error;
 
 use std::net::UdpSocket;
 use std::thread::spawn;
@@ -51,20 +46,11 @@ impl<T> RefreshableData<T> {
         self.data = Some(data);
         self.last_updated = Instant::now()
     }
-    fn is_some(&self) -> bool {
-        self.data.is_some()
-    }
-    fn is_none(&self) -> bool {
-        self.data.is_none()
-    }
     fn needs_refresh(&self) -> bool {
         self.data.is_none() || self.last_updated.elapsed() > self.max_age
     }
     fn as_ref(&self) -> Option<&T> {
         self.data.as_ref()
-    }
-    fn as_mut(&mut self) -> Option<&mut T> {
-        self.data.as_mut()
     }
 }
 
@@ -156,7 +142,6 @@ impl BulbInfo {
         match self.color {
             Color::Unknown => {
                 // we'll need to wait to get info about this bulb's model, so we'll know if it's multizone or not
-
             }
             Color::Single(ref d) => {
                 sock.send_to(
@@ -240,8 +225,6 @@ struct Manager {
     bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>,
     last_discovery: Instant,
     sock: UdpSocket,
-    //    udp_sender: Sender<(SocketAddr, RawMessage)>,
-    //    udp_receiver: Receiver<(SocketAddr, RawMessage)>
 }
 
 impl Manager {
@@ -250,7 +233,6 @@ impl Manager {
         sock.set_broadcast(true)?;
 
         // spawn a thread that can send to our socket
-        let sender_sock = sock.try_clone()?;
         let recv_sock = sock.try_clone()?;
 
         let bulbs = Arc::new(Mutex::new(HashMap::new()));
@@ -258,7 +240,7 @@ impl Manager {
 
         // spawn a thread that will receive data from our socket and update our internal data structures
 
-        let receiver_thread = spawn(move || {
+        spawn(move || {
             let mut buf = [0; 1024];
             loop {
                 match recv_sock.recv_from(&mut buf) {
@@ -275,7 +257,8 @@ impl Manager {
                                         b.port = addr.port() as u32;
                                         b.addr = addr;
                                         b.last_seen = Local::now();
-                                    }).or_insert_with(|| {
+                                    })
+                                    .or_insert_with(|| {
                                         BulbInfo::new(
                                             addr.port() as u32,
                                             raw.frame_addr.target,
@@ -290,17 +273,11 @@ impl Manager {
                                     Ok(Message::StateLabel { label }) => {
                                         bulb.name.update(label.0);
                                     }
-                                    Ok(Message::StateLocation {
-                                        location,
-                                        label,
-                                        updated_at,
-                                    }) => {
+                                    Ok(Message::StateLocation { label, .. }) => {
                                         bulb.location.update(label.0);
                                     }
                                     Ok(Message::StateVersion {
-                                        vendor,
-                                        product,
-                                        version,
+                                        vendor, product, ..
                                     }) => {
                                         bulb.model.update((vendor, product));
                                         if let Some(info) = get_product_info(vendor, product) {
@@ -323,10 +300,10 @@ impl Manager {
                                     Ok(Message::StatePower { level }) => {
                                         bulb.power_level.update(level);
                                     }
-                                    Ok(Message::StateHostFirmware { build, version, .. }) => {
+                                    Ok(Message::StateHostFirmware { version, .. }) => {
                                         bulb.host_firmware.update(version);
                                     }
-                                    Ok(Message::StateWifiFirmware { build, version, .. }) => {
+                                    Ok(Message::StateWifiFirmware { version, .. }) => {
                                         bulb.wifi_firmware.update(version);
                                     }
                                     Ok(Message::LightState {
@@ -368,7 +345,7 @@ impl Manager {
                                         color7,
                                     }) => {
                                         if let Color::Multi(ref mut d) = bulb.color {
-                                            let mut v = d.data.get_or_insert_with(|| {
+                                            let v = d.data.get_or_insert_with(|| {
                                                 let mut v = Vec::with_capacity(count as usize);
                                                 v.resize(count as usize, None);
                                                 assert!(index + 7 <= count);
@@ -400,7 +377,7 @@ impl Manager {
                             }
                         }
                         Err(e) => {
-                            println!{"Error unpacking raw message: {:?}", e}
+                            println! {"Error unpacking raw message: {:?}", e}
                         }
                     },
                     Err(e) => panic!("recv_from err {:?}", e),
@@ -412,7 +389,6 @@ impl Manager {
             bulbs,
             last_discovery: Instant::now(),
             sock,
-            //            udp_receiver: sock_sender_receiver
         };
         mgr.discover()?;
         Ok(mgr)
@@ -433,7 +409,6 @@ impl Manager {
         for addr in get_if_addrs().unwrap() {
             match addr.addr {
                 IfAddr::V4(Ifv4Addr {
-                    ip,
                     broadcast: Some(bcast),
                     ..
                 }) => {
@@ -443,7 +418,6 @@ impl Manager {
                     let addr = net::SocketAddr::new(net::IpAddr::V4(bcast), 56700);
                     println!("Discovering bulbs on LAN {:?}", addr);
                     self.sock.send_to(&bytes, &addr)?;
-                    //                    self.udp_sender.send((addr, rawmsg.clone()));
                 }
                 _ => {}
             }

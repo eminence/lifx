@@ -37,13 +37,18 @@ fn main() {
         ..Default::default()
     };
 
-    let raw = RawMessage::build(&opts, Message::LightSetPower {level: 65535, duration: 0}).unwrap();
+    let raw = RawMessage::build(
+        &opts,
+        Message::LightSetPower {
+            level: 65535,
+            duration: 0,
+        },
+    )
+    .unwrap();
     sock.send_to(&raw.pack().unwrap(), &target).unwrap();
-
 
     let raw = RawMessage::build(&opts, msg).unwrap();
     sock.send_to(&raw.pack().unwrap(), &target).unwrap();
-
 
     let duration = 50;
 
@@ -59,7 +64,7 @@ fn main() {
                     kelvin: 3000,
                     saturation: 65535,
                 },
-                duration: duration,
+                duration,
                 apply: ApplicationRequest::Apply,
             };
 
@@ -76,7 +81,7 @@ fn main() {
                         kelvin: 3000,
                         saturation: 65535,
                     },
-                    duration: duration,
+                    duration,
                     apply: ApplicationRequest::Apply,
                 };
 
@@ -100,7 +105,7 @@ fn main() {
                     kelvin: 3000,
                     saturation: 65535,
                 },
-                duration: duration,
+                duration,
                 apply: ApplicationRequest::Apply,
             };
 
@@ -117,7 +122,7 @@ fn main() {
                         kelvin: 3000,
                         saturation: 65535,
                     },
-                    duration: duration,
+                    duration,
                     apply: ApplicationRequest::Apply,
                 };
 

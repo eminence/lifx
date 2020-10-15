@@ -1,5 +1,3 @@
-#![deny(overflowing_literals)]
-
 //! This crate provides low-level message types and structures for dealing with the LIFX LAN protocol.
 //!
 //! This lets you control lights on your local area network.  More info can be found here:
@@ -283,8 +281,8 @@ where
 }
 
 impl<T> LittleEndianWriter<Waveform> for T
-    where
-        T: WriteBytesExt,
+where
+    T: WriteBytesExt,
 {
     fn write_val(&mut self, v: Waveform) -> Result<(), io::Error> {
         self.write_u8(v as u8)
@@ -438,7 +436,7 @@ pub enum Waveform {
     Sine = 1,
     HalfSign = 2,
     Triangle = 3,
-    Pulse = 4
+    Pulse = 4,
 }
 
 /// Decoded LIFX Messages
@@ -567,9 +565,7 @@ pub enum Message {
     /// Response to [Message::GetPower] message.
     ///
     /// Provides device power level.
-    StatePower {
-        level: PowerLevel,
-    },
+    StatePower { level: PowerLevel },
 
     /// GetLabel - 23
     ///
@@ -580,18 +576,14 @@ pub enum Message {
     /// SetLabel - 24
     ///
     /// Set the device label text.
-    SetLabel {
-        label: LifxString,
-    },
+    SetLabel { label: LifxString },
 
     /// StateLabel - 25
     ///
     /// Response to [Message::GetLabel] message.
     ///
     /// Provides device label.
-    StateLabel {
-        label: LifxString,
-    },
+    StateLabel { label: LifxString },
 
     /// GetVersion - 32
     ///
@@ -639,9 +631,7 @@ pub enum Message {
     ///
     /// (Note that technically this message has no payload, but the frame sequence number is stored
     /// here for convenience).
-    Acknowledgement {
-        seq: u8,
-    },
+    Acknowledgement { seq: u8 },
 
     /// GetLocation - 48
     ///
@@ -699,9 +689,7 @@ pub enum Message {
     ///
     /// Request an arbitrary payload be echoed back. Causes the device to transmit an [Message::EchoResponse]
     /// message.
-    EchoRequest {
-        payload: EchoPayload,
-    },
+    EchoRequest { payload: EchoPayload },
 
     /// EchoResponse - 59
     ///
@@ -709,9 +697,7 @@ pub enum Message {
     ///
     /// Echo response with payload sent in the EchoRequest.
     ///
-    EchoResponse {
-        payload: EchoPayload,
-    },
+    EchoResponse { payload: EchoPayload },
 
     /// Get - 101
     ///
@@ -744,10 +730,9 @@ pub enum Message {
         period: u32,
         /// Number of cycles
         cycles: f32,
-
         /// Waveform Skew, [-32768, 32767] scaled to [0, 1].
         skew_ratio: i16,
-        /// 	Waveform to use for transition.
+        /// Waveform to use for transition.
         waveform: Waveform,
     },
 
@@ -781,10 +766,7 @@ pub enum Message {
     ///
     /// If the Frame Address res_required field is set to one (1) then the device will transmit a
     /// StatePower message.
-    LightSetPower {
-        level: u16,
-        duration: u32,
-    },
+    LightSetPower { level: u16, duration: u32 },
 
     /// StatePower - 118
     ///
@@ -792,14 +774,11 @@ pub enum Message {
     ///
     /// Field   Type
     /// level   unsigned 16-bit integer
-    LightStatePower {
-        level: u16,
-    },
-
+    LightStatePower { level: u16 },
 
     /// SetWaveformOptional - 119
-   ///
-   /// Apply an effect to the bulb.
+    ///
+    /// Apply an effect to the bulb.
     SetWaveformOptional {
         reserved: u8,
         transient: bool,
@@ -814,7 +793,7 @@ pub enum Message {
         set_hue: bool,
         set_saturation: bool,
         set_brightness: bool,
-        set_kelvin: bool
+        set_kelvin: bool,
     },
 
     /// GetInfrared - 120
@@ -825,16 +804,12 @@ pub enum Message {
     /// StateInfrared - 121
     ///
     /// Indicates the current maximum setting for the infrared channel.
-    LightStateInfrared {
-        brightness: u16,
-    },
+    LightStateInfrared { brightness: u16 },
 
     /// SetInfrared -- 122
     ///
     /// Set the current maximum brightness for the infrared channel.
-    LightSetInfrared {
-        brightness: u16,
-    },
+    LightSetInfrared { brightness: u16 },
 
     /// SetColorZones - 501
     ///
@@ -856,21 +831,14 @@ pub enum Message {
     /// the requested range. The bulb may send state messages that cover more than the requested
     /// zones. Any zones outside the requested indexes will still contain valid values at the time
     /// the message was sent.
-    GetColorZones {
-        start_index: u8,
-        end_index: u8,
-    },
+    GetColorZones { start_index: u8, end_index: u8 },
 
     /// StateZone - 503
 
     /// The StateZone message represents the state of a single zone with the `index` field indicating
     /// which zone is represented. The `count` field contains the count of the total number of zones
     /// available on the device.
-    StateZone {
-        count: u8,
-        index: u8,
-        color: HSBK,
-    },
+    StateZone { count: u8, index: u8, color: HSBK },
 
     /// StateMultiZone - 506
     ///
@@ -984,17 +952,9 @@ impl Message {
                 version: u32
             )),
             20 => Ok(Message::GetPower),
-            22 => Ok(unpack!(
-                msg,
-                StatePower,
-                level: u16
-            )),
+            22 => Ok(unpack!(msg, StatePower, level: u16)),
             23 => Ok(Message::GetLabel),
-            25 => Ok(unpack!(
-                msg,
-                StateLabel,
-                label: LifxString
-            )),
+            25 => Ok(unpack!(msg, StateLabel, label: LifxString)),
             32 => Ok(Message::GetVersion),
             33 => Ok(unpack!(
                 msg,
@@ -1003,11 +963,13 @@ impl Message {
                 product: u32,
                 version: u32
             )),
-            35 => Ok(unpack!(msg,
+            35 => Ok(unpack!(
+                msg,
                 StateInfo,
                 time: u64,
                 uptime: u64,
-                downtime: u64)),
+                downtime: u64
+            )),
             45 => Ok(Message::Acknowledgement {
                 seq: msg.frame_addr.sequence,
             }),
@@ -1066,7 +1028,9 @@ impl Message {
             )),
             502 => Ok(unpack!(msg, GetColorZones, start_index: u8, end_index: u8)),
             503 => Ok(unpack!(msg, StateZone, count: u8, index: u8, color: HSBK)),
-            506 => Ok(unpack!(msg, StateMultiZone,
+            506 => Ok(unpack!(
+                msg,
+                StateMultiZone,
                 count: u8,
                 index: u8,
                 color0: HSBK,
@@ -1107,21 +1071,26 @@ pub struct HSBK {
 
 impl HSBK {
     pub fn describe(&self, short: bool) -> String {
-        if short {
-            if self.saturation == 0 {
-                format!("{}K", self.kelvin)
-            } else {
-                format!("{:.0}/{:.0}", (self.hue as f32 / 65535.0) * 360.0, self.saturation  as f32 / 655.35)
-            }
-        } else {
-            if self.saturation == 0 {
-                format!("{:.0}% White ({})", self.brightness as f32 / 655.35, describe_kelvin(self.kelvin))
-            } else { // colors
-                format!("{}% hue: {} sat: {}", self.brightness as f32 / 655.35, self.hue, self.saturation)
-            }
+        match short {
+            true if self.saturation == 0 => format!("{}K", self.kelvin),
+            true => format!(
+                "{:.0}/{:.0}",
+                (self.hue as f32 / 65535.0) * 360.0,
+                self.saturation as f32 / 655.35
+            ),
+            false if self.saturation == 0 => format!(
+                "{:.0}% White ({})",
+                self.brightness as f32 / 655.35,
+                describe_kelvin(self.kelvin)
+            ),
+            false => format!(
+                "{}% hue: {} sat: {}",
+                self.brightness as f32 / 655.35,
+                self.hue,
+                self.saturation
+            ),
         }
     }
-
 }
 
 /// Describe (in english words) the color temperature as given in kelvin.
@@ -1163,9 +1132,7 @@ pub fn describe_kelvin(k: u16) -> &'static str {
     }
 }
 
-impl HSBK {
-
-}
+impl HSBK {}
 
 /// The raw message structure
 ///
@@ -1521,7 +1488,7 @@ impl RawMessage {
                 period,
                 cycles,
                 skew_ratio,
-                waveform
+                waveform,
             } => {
                 v.write_val(reserved)?;
                 v.write_val(transient)?;
@@ -1542,7 +1509,7 @@ impl RawMessage {
                 set_hue,
                 set_saturation,
                 set_brightness,
-                set_kelvin
+                set_kelvin,
             } => {
                 v.write_val(reserved)?;
                 v.write_val(transient)?;
@@ -1807,14 +1774,13 @@ impl RawMessage {
     }
 }
 
-
 #[derive(Clone, Debug)]
 pub struct ProductInfo {
     pub name: &'static str,
     pub color: bool,
     pub infrared: bool,
     pub multizone: bool,
-    pub chain: bool
+    pub chain: bool,
 }
 
 /// Look up info about what a LIFX product supports.
@@ -1822,6 +1788,7 @@ pub struct ProductInfo {
 /// You can get the vendor and product IDs from a bulb by receiving a [Message::StateVersion] message
 ///
 /// Data is taken from https://github.com/LIFX/products/blob/master/products.json
+#[rustfmt::skip]
 pub fn get_product_info(vendor: u32, product: u32) -> Option<&'static ProductInfo> {
     match (vendor, product) {
         (1, 1) => Some(&ProductInfo { name: "Original 1000", color: true, infrared: false, multizone: false, chain: false}),
@@ -2044,7 +2011,8 @@ mod tests {
                 source: 0,
             },
             msg,
-        ).unwrap();
+        )
+        .unwrap();
 
         let bytes = raw.pack().unwrap();
         println!("{:?}", bytes);

@@ -1,16 +1,12 @@
-#![feature(duration_as_u128)]
 extern crate lifx_core;
 
-use lifx_core::ApplicationRequest;
 use lifx_core::BuildOptions;
 use lifx_core::Message;
 use lifx_core::RawMessage;
-use lifx_core::HSBK;
 use lifx_core::Waveform;
+use lifx_core::HSBK;
 use std::net::SocketAddr;
 use std::net::UdpSocket;
-use std::thread::sleep;
-use std::time::Duration;
 use std::time::Instant;
 
 fn main() {
@@ -21,7 +17,7 @@ fn main() {
 
     let target: SocketAddr = "10.10.1.132:56700".parse().unwrap();
 
-    let opts = BuildOptions{
+    let opts = BuildOptions {
         target: Some(0x0000619602D573D0),
         ack_required: false,
         res_required: false,
@@ -53,28 +49,26 @@ fn main() {
     let bytes = raw.pack().unwrap();
     sock.send_to(&bytes, &target).unwrap();
 
-
-
     let stdin = std::io::stdin();
     let mut s = String::new();
 
     println!("When ready, tap the [enter] key with the beat of a song.");
-    stdin.read_line(&mut s);
-    stdin.read_line(&mut s);
+    stdin.read_line(&mut s).unwrap();
+    stdin.read_line(&mut s).unwrap();
     let start = Instant::now();
     let mut count = 0;
     for _ in 0..10 {
-        stdin.read_line(&mut s);
+        stdin.read_line(&mut s).unwrap();
         count += 1;
         let d = start.elapsed();
-        println!("{:?}", d / count );
+        println!("{:?}", d / count);
     }
     let period = start.elapsed() / count;
 
     let msg = Message::SetWaveform {
         reserved: 0,
         transient: true,
-        color: color,
+        color,
         period: period.as_millis() as u32,
         cycles: 50.0,
         skew_ratio: 20000,
@@ -84,6 +78,4 @@ fn main() {
     let raw = RawMessage::build(&opts, msg).unwrap();
     let bytes = raw.pack().unwrap();
     sock.send_to(&bytes, &target).unwrap();
-
-
 }
