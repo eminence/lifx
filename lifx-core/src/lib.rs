@@ -25,8 +25,8 @@
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure_derive::Fail;
-use std::fmt;
-use std::io;
+use std::io::Cursor;
+use std::{fmt, io};
 
 /// Various message encoding/decoding errors
 #[derive(Fail, Debug)]
@@ -909,7 +909,6 @@ impl Message {
 
     /// Tries to parse the payload in a [RawMessage], based on its message type.
     pub fn from_raw(msg: &RawMessage) -> Result<Message, Error> {
-        use std::io::Cursor;
         match msg.protocol_header.typ {
             2 => Ok(Message::GetService),
             3 => Ok(unpack!(msg, StateService, service: u8, port: u32)),
@@ -1248,7 +1247,6 @@ impl Frame {
         Ok(v)
     }
     fn unpack(v: &[u8]) -> Result<Frame, Error> {
-        use std::io::Cursor;
         let mut c = Cursor::new(v);
 
         let size = c.read_val()?;
@@ -1306,7 +1304,6 @@ impl FrameAddress {
     }
 
     fn unpack(v: &[u8]) -> Result<FrameAddress, Error> {
-        use std::io::Cursor;
         let mut c = Cursor::new(v);
 
         let target = c.read_val()?;
@@ -1354,7 +1351,6 @@ impl ProtocolHeader {
         Ok(v)
     }
     fn unpack(v: &[u8]) -> Result<ProtocolHeader, Error> {
-        use std::io::Cursor;
         let mut c = Cursor::new(v);
 
         let reserved = c.read_val()?;

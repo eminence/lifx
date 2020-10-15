@@ -1,10 +1,5 @@
-use lifx_core::BuildOptions;
-use lifx_core::Message;
-use lifx_core::RawMessage;
-use lifx_core::Waveform;
-use lifx_core::HSBK;
-use std::net::SocketAddr;
-use std::net::UdpSocket;
+use lifx_core::{BuildOptions, Message, RawMessage, Waveform, HSBK};
+use std::net::{SocketAddr, UdpSocket};
 use std::time::Instant;
 
 fn main() {

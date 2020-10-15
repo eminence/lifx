@@ -1,22 +1,11 @@
-use lifx_core::get_product_info;
-use lifx_core::BuildOptions;
-use lifx_core::Message;
-use lifx_core::RawMessage;
-
-use std::net::UdpSocket;
-use std::thread::spawn;
-use std::time::Duration;
-
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::time::Instant;
-
 use chrono::Local;
-use lifx_core::PowerLevel;
-use lifx_core::HSBK;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::thread;
+use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
+use lifx_core::{get_product_info, BuildOptions, Message, PowerLevel, RawMessage, HSBK};
+use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::sync::{Arc, Mutex};
+use std::thread::{sleep, spawn};
+use std::time::{Duration, Instant};
 
 const HOUR: Duration = Duration::from_secs(60 * 60);
 
@@ -390,9 +379,6 @@ impl Manager {
     }
 
     fn discover(&mut self) -> Result<(), failure::Error> {
-        use get_if_addrs::*;
-        use std::net;
-
         println!("Doing discovery");
 
         let opts = BuildOptions {
@@ -410,7 +396,7 @@ impl Manager {
                     if addr.ip().is_loopback() {
                         continue;
                     }
-                    let addr = net::SocketAddr::new(net::IpAddr::V4(bcast), 56700);
+                    let addr = SocketAddr::new(IpAddr::V4(bcast), 56700);
                     println!("Discovering bulbs on LAN {:?}", addr);
                     self.sock.send_to(&bytes, &addr)?;
                 }
@@ -448,6 +434,6 @@ fn main() {
             }
         }
 
-        thread::sleep(Duration::from_secs(5));
+        sleep(Duration::from_secs(5));
     }
 }

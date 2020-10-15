@@ -1,10 +1,5 @@
-use lifx_core::ApplicationRequest;
-use lifx_core::BuildOptions;
-use lifx_core::Message;
-use lifx_core::RawMessage;
-use lifx_core::HSBK;
-use std::net::SocketAddr;
-use std::net::UdpSocket;
+use lifx_core::{ApplicationRequest, BuildOptions, Message, RawMessage, HSBK};
+use std::net::{SocketAddr, UdpSocket};
 use std::thread::sleep;
 use std::time::Duration;
 
