@@ -23,12 +23,8 @@
 //! It's common to see packets for LIFX bulbs that don't match the documented protocol.  These are
 //! suspected to be internal messages that are used by offical LIFX apps, but that aren't documented.
 
-extern crate byteorder;
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
-
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use failure_derive::Fail;
 use std::fmt;
 use std::io;
 

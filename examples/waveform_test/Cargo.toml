@@ -2,6 +2,7 @@
 name = "waveform_test"
 version = "0.1.0"
 authors = ["Andrew Chin <achin@eminence32.net>"]
+edition = "2018"
 
 [dependencies]
 lifx-core = {path =  "../../lifx-core"}

@@ -1,8 +1,3 @@
-extern crate chrono;
-extern crate failure;
-extern crate get_if_addrs;
-extern crate lifx_core;
-
 use lifx_core::get_product_info;
 use lifx_core::BuildOptions;
 use lifx_core::Message;

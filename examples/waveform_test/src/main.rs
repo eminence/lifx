@@ -1,5 +1,3 @@
-extern crate lifx_core;
-
 use lifx_core::BuildOptions;
 use lifx_core::Message;
 use lifx_core::RawMessage;

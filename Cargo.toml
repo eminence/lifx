@@ -6,7 +6,7 @@ description = "Utilities for controlling your LIFX bulbs"
 repository = "https://github.com/eminence/lifx"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-
+edition = "2018"
 
 [workspace]
 members = ["lifx-core", "examples/multizone_test", "examples/waveform_test", "utils/get_all_info"]

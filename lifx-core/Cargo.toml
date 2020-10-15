@@ -6,6 +6,7 @@ repository = "https://github.com/eminence/lifx"
 description = "Low-level control of LIFX bulbs on your LAN"
 license = "MIT OR Apache-2.0"
 readme = "../README.md"
+edition = "2018"
 
 [dependencies]
 byteorder = "1.2.4"
