@@ -25,6 +25,7 @@
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure_derive::Fail;
+use std::convert::{TryFrom, TryInto};
 use std::io::Cursor;
 use std::{fmt, io};
 
@@ -50,33 +51,21 @@ impl std::convert::From<io::Error> for Error {
     }
 }
 
+impl From<std::convert::Infallible> for Error {
+    fn from(_: std::convert::Infallible) -> Self {
+        unreachable!()
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "An error occurred.")
     }
 }
 
-trait LifxFrom<T>: Sized {
-    fn from(val: T) -> Result<Self, Error>;
-}
-
-macro_rules! derive_lifx_from {
-{ $( $t:ty ),*} => {
-    $(
-        impl LifxFrom<$t> for $t {
-            fn from(val: $t) -> Result<Self, Error> { Ok(val)}
-        }
-    )*
-
-}
-}
-
-derive_lifx_from! {
-    u8, u16, i16, u32, f32, u64, LifxIdent, LifxString, EchoPayload, HSBK
-}
-
-impl LifxFrom<u8> for ApplicationRequest {
-    fn from(val: u8) -> Result<ApplicationRequest, Error> {
+impl TryFrom<u8> for ApplicationRequest {
+    type Error = Error;
+    fn try_from(val: u8) -> Result<ApplicationRequest, Error> {
         match val {
             0 => Ok(ApplicationRequest::NoApply),
             1 => Ok(ApplicationRequest::Apply),
@@ -89,8 +78,9 @@ impl LifxFrom<u8> for ApplicationRequest {
     }
 }
 
-impl LifxFrom<u8> for Waveform {
-    fn from(val: u8) -> Result<Waveform, Error> {
+impl TryFrom<u8> for Waveform {
+    type Error = Error;
+    fn try_from(val: u8) -> Result<Waveform, Error> {
         match val {
             0 => Ok(Waveform::Saw),
             1 => Ok(Waveform::Sine),
@@ -105,8 +95,9 @@ impl LifxFrom<u8> for Waveform {
     }
 }
 
-impl LifxFrom<u8> for Service {
-    fn from(val: u8) -> Result<Service, Error> {
+impl TryFrom<u8> for Service {
+    type Error = Error;
+    fn try_from(val: u8) -> Result<Service, Error> {
         if val != Service::UDP as u8 {
             Err(Error::ProtocolError(format!(
                 "Unknown service value {}",
@@ -118,8 +109,9 @@ impl LifxFrom<u8> for Service {
     }
 }
 
-impl LifxFrom<u16> for PowerLevel {
-    fn from(val: u16) -> Result<PowerLevel, Error> {
+impl TryFrom<u16> for PowerLevel {
+    type Error = Error;
+    fn try_from(val: u16) -> Result<PowerLevel, Error> {
         match val {
             x if x == PowerLevel::Enabled as u16 => Ok(PowerLevel::Enabled),
             x if x == PowerLevel::Standby as u16 => Ok(PowerLevel::Standby),
@@ -366,13 +358,12 @@ macro_rules! unpack {
             let $n: $t = c.read_val()?;
         )*
 
-        Message::$typ{
+            Message::$typ {
             $(
-                $n: LifxFrom::from($n)?,
+                    $n: $n.try_into()?,
             )*
         }
         }
-
     };
 }
 
