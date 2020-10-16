@@ -38,7 +38,6 @@ impl<T> RefreshableData<T> {
     }
 }
 
-#[derive(Debug)]
 struct BulbInfo {
     last_seen: chrono::DateTime<Local>,
     port: u32,
@@ -143,65 +142,67 @@ impl BulbInfo {
 
         Ok(())
     }
+}
 
-    fn print(&self) {
+impl std::fmt::Debug for BulbInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BulbInfo({:0>16X} - {}  ", self.target, self.addr)?;
+
         if let Some(name) = self.name.as_ref() {
-            if let Some(loc) = self.location.as_ref() {
-                print!("{}/{} ({:0>16X} - {})", name, loc, self.target, self.addr);
-            } else {
-                print!("{} ({:0>16X} - {})", name, self.target, self.addr);
-            }
-        } else {
-            print!("({})", self.target);
+            write!(f, "{}", name)?;
         }
-
+        if let Some(location) = self.location.as_ref() {
+            write!(f, "/{}", location)?;
+        }
         if let Some((vendor, product)) = self.model.as_ref() {
             if let Some(info) = get_product_info(*vendor, *product) {
-                println!(" - {}", info.name);
+                write!(f, " - {} ", info.name)?;
             } else {
-                println!(" - Unknown model");
+                write!(
+                    f,
+                    " - Unknown model (vendor={}, product={}) ",
+                    vendor, product
+                )?;
             }
-        } else {
-            println!();
         }
-
         if let Some(fw_version) = self.host_firmware.as_ref() {
-            print!("  Host FW:{} ", fw_version);
+            write!(f, " McuFW:{:x}", fw_version)?;
         }
         if let Some(fw_version) = self.wifi_firmware.as_ref() {
-            println!("  Wifi FW:{} ", fw_version);
+            write!(f, " WifiFW:{:x}", fw_version)?;
         }
         if let Some(level) = self.power_level.as_ref() {
             if *level == PowerLevel::Enabled {
-                print!("  Powered On");
+                write!(f, "  Powered On(")?;
                 match self.color {
-                    Color::Unknown => {}
+                    Color::Unknown => write!(f, "??")?,
                     Color::Single(ref color) => {
-                        println!(
-                            "  {}",
-                            color.as_ref().map_or("".to_owned(), |c| c.describe(false))
-                        );
+                        f.write_str(
+                            &color
+                                .as_ref()
+                                .map(|c| c.describe(false))
+                                .unwrap_or_else(|| "??".to_owned()),
+                        )?;
                     }
                     Color::Multi(ref color) => {
                         if let Some(vec) = color.as_ref() {
-                            print!("  {} zones: ", vec.len());
+                            write!(f, "Zones: ")?;
                             for zone in vec {
                                 if let Some(color) = zone {
-                                    print!("{} ", color.describe(true))
+                                    write!(f, "{} ", color.describe(true))?;
                                 } else {
-                                    print!("?? ");
+                                    write!(f, "?? ")?;
                                 }
                             }
-                            println!();
-                        } else {
-                            println!();
                         }
                     }
                 }
+                write!(f, ")")?;
             } else {
-                println!("  Powered off");
+                write!(f, "  Powered Off")?;
             }
         }
+        write!(f, ")")
     }
 }
 
@@ -431,7 +432,7 @@ fn main() {
         println!("\n\n\n\n");
         if let Ok(bulbs) = mgr.bulbs.lock() {
             for bulb in bulbs.values() {
-                bulb.print();
+                println!("{:?}", bulb);
             }
         }
 
