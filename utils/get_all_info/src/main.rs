@@ -78,11 +78,11 @@ impl BulbInfo {
         }
     }
 
-    fn query_for_missing_info(&self, sock: &UdpSocket) -> Result<(), failure::Error> {
+    fn query_for_missing_info(&self, sock: &UdpSocket, source: u32) -> Result<(), failure::Error> {
         let opts = BuildOptions {
             target: Some(self.target),
             res_required: true,
-            source: 12345678,
+            source,
             ..Default::default()
         };
 
@@ -209,6 +209,7 @@ struct Manager {
     bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>,
     last_discovery: Instant,
     sock: UdpSocket,
+    source: u32,
 }
 
 impl Manager {
@@ -229,6 +230,7 @@ impl Manager {
             bulbs,
             last_discovery: Instant::now(),
             sock,
+            source: 1,
         };
         mgr.discover()?;
         Ok(mgr)
@@ -379,6 +381,7 @@ impl Manager {
         println!("Doing discovery");
 
         let opts = BuildOptions {
+            source: self.source,
             ..Default::default()
         };
         let rawmsg = RawMessage::build(&opts, Message::GetService).unwrap();
@@ -409,7 +412,8 @@ impl Manager {
     fn refresh(&self) {
         if let Ok(bulbs) = self.bulbs.lock() {
             for bulb in bulbs.values() {
-                bulb.query_for_missing_info(&self.sock).unwrap();
+                bulb.query_for_missing_info(&self.sock, self.source)
+                    .unwrap();
             }
         }
     }
