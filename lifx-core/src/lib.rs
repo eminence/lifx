@@ -120,15 +120,8 @@ impl TryFrom<u16> for PowerLevel {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct EchoPayload(pub [u8; 64]);
-
-impl std::clone::Clone for EchoPayload {
-    fn clone(&self) -> EchoPayload {
-        let mut p = [0; 64];
-        p.clone_from_slice(&self.0);
-        EchoPayload(p)
-    }
-}
 
 impl std::fmt::Debug for EchoPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
@@ -390,7 +383,7 @@ macro_rules! unpack {
 /// Since these other services are unsupported by the lifx-core library, a message with a non-UDP
 /// service cannot be constructed.
 #[repr(u8)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Service {
     UDP = 1,
 }

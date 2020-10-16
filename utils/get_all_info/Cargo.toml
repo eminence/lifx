@@ -8,4 +8,3 @@ edition = "2018"
 lifx-core = {path =  "../../lifx-core"}
 get_if_addrs = "0.5.3"
 failure = "0.1.2"
-chrono = "0.4.6"

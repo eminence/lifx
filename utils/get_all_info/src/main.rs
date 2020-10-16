@@ -1,6 +1,5 @@
-use chrono::Local;
 use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
-use lifx_core::{get_product_info, BuildOptions, Message, PowerLevel, RawMessage, HSBK};
+use lifx_core::{get_product_info, BuildOptions, Message, PowerLevel, RawMessage, Service, HSBK};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
@@ -39,12 +38,11 @@ impl<T> RefreshableData<T> {
 }
 
 struct BulbInfo {
-    last_seen: chrono::DateTime<Local>,
-    port: u32,
+    last_seen: Instant,
+    source: u32,
     target: u64,
     addr: SocketAddr,
     name: RefreshableData<String>,
-    /// vendor,product tuple
     model: RefreshableData<(u32, u32)>,
     location: RefreshableData<String>,
     host_firmware: RefreshableData<u32>,
@@ -61,14 +59,14 @@ enum Color {
 }
 
 impl BulbInfo {
-    fn new(port: u32, target: u64, addr: SocketAddr) -> BulbInfo {
+    fn new(source: u32, target: u64, addr: SocketAddr) -> BulbInfo {
         BulbInfo {
-            port,
+            last_seen: Instant::now(),
+            source,
             target,
             addr,
             name: RefreshableData::empty(HOUR, Message::GetLabel),
             model: RefreshableData::empty(HOUR, Message::GetVersion),
-            last_seen: Local::now(),
             location: RefreshableData::empty(HOUR, Message::GetLocation),
             host_firmware: RefreshableData::empty(HOUR, Message::GetHostFirmware),
             wifi_firmware: RefreshableData::empty(HOUR, Message::GetWifiFirmware),
@@ -77,67 +75,40 @@ impl BulbInfo {
         }
     }
 
-    fn query_for_missing_info(&self, sock: &UdpSocket, source: u32) -> Result<(), failure::Error> {
-        let opts = BuildOptions {
-            target: Some(self.target),
-            res_required: true,
-            source,
-            ..Default::default()
-        };
+    fn update(&mut self, addr: SocketAddr) {
+        self.last_seen = Instant::now();
+        self.addr = addr;
+    }
 
-        if self.name.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.name.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
+    fn refresh_if_needed<T>(
+        &self,
+        sock: &UdpSocket,
+        data: &RefreshableData<T>,
+    ) -> Result<(), failure::Error> {
+        if data.needs_refresh() {
+            let options = BuildOptions {
+                target: Some(self.target),
+                res_required: true,
+                source: self.source,
+                ..Default::default()
+            };
+            let message = RawMessage::build(&options, data.refresh_msg.clone())?;
+            sock.send_to(&message.pack()?, self.addr)?;
         }
-        if self.model.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.model.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-        if self.location.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.location.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-        if self.host_firmware.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.host_firmware.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-        if self.wifi_firmware.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.wifi_firmware.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-        if self.power_level.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.power_level.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
+        Ok(())
+    }
 
-        match self.color {
-            Color::Unknown => {
-                // we'll need to wait to get info about this bulb's model, so we'll know if it's multizone or not
-            }
-            Color::Single(ref d) => {
-                sock.send_to(
-                    &RawMessage::build(&opts, d.refresh_msg.clone())?.pack()?,
-                    self.addr,
-                )?;
-            }
-            Color::Multi(ref d) => {
-                sock.send_to(
-                    &RawMessage::build(&opts, d.refresh_msg.clone())?.pack()?,
-                    self.addr,
-                )?;
-            }
+    fn query_for_missing_info(&self, sock: &UdpSocket) -> Result<(), failure::Error> {
+        self.refresh_if_needed(sock, &self.name)?;
+        self.refresh_if_needed(sock, &self.model)?;
+        self.refresh_if_needed(sock, &self.location)?;
+        self.refresh_if_needed(sock, &self.host_firmware)?;
+        self.refresh_if_needed(sock, &self.wifi_firmware)?;
+        self.refresh_if_needed(sock, &self.power_level)?;
+        match &self.color {
+            Color::Unknown => (), // we'll need to wait to get info about this bulb's model, so we'll know if it's multizone or not
+            Color::Single(d) => self.refresh_if_needed(sock, d)?,
+            Color::Multi(d) => self.refresh_if_needed(sock, d)?,
         }
 
         Ok(())
@@ -223,43 +194,33 @@ impl Manager {
 
         let bulbs = Arc::new(Mutex::new(HashMap::new()));
         let receiver_bulbs = bulbs.clone();
+        let source = 0x72757374;
 
         // spawn a thread that will receive data from our socket and update our internal data structures
-        spawn(move || Self::worker(recv_sock, receiver_bulbs));
+        spawn(move || Self::worker(recv_sock, source, receiver_bulbs));
 
         let mut mgr = Manager {
             bulbs,
             last_discovery: Instant::now(),
             sock,
-            source: 1,
+            source,
         };
         mgr.discover()?;
         Ok(mgr)
     }
 
-    fn handle_message(addr: SocketAddr, raw: RawMessage, bulbs: &mut HashMap<u64, BulbInfo>) {
-        let bulb = bulbs
-            .entry(raw.frame_addr.target)
-            .and_modify(|b: &mut BulbInfo| {
-                b.port = addr.port() as u32;
-                b.addr = addr;
-                b.last_seen = Local::now();
-            })
-            .or_insert_with(|| BulbInfo::new(addr.port() as u32, raw.frame_addr.target, addr));
-
-        match Message::from_raw(&raw) {
-            Ok(Message::StateService { port, .. }) => {
-                assert_eq!(port, addr.port() as u32);
+    fn handle_message(raw: RawMessage, bulb: &mut BulbInfo) -> Result<(), lifx_core::Error> {
+        match Message::from_raw(&raw)? {
+            Message::StateService { port, service } => {
+                if port != bulb.addr.port() as u32 || service != Service::UDP {
+                    println!("Unsupported service: {:?}/{}", service, port);
+                }
             }
-            Ok(Message::StateLabel { label }) => {
-                bulb.name.update(label.0);
-            }
-            Ok(Message::StateLocation { label, .. }) => {
-                bulb.location.update(label.0);
-            }
-            Ok(Message::StateVersion {
+            Message::StateLabel { label } => bulb.name.update(label.0),
+            Message::StateLocation { label, .. } => bulb.location.update(label.0),
+            Message::StateVersion {
                 vendor, product, ..
-            }) => {
+            } => {
                 bulb.model.update((vendor, product));
                 if let Some(info) = get_product_info(vendor, product) {
                     if info.multizone {
@@ -278,32 +239,26 @@ impl Manager {
                     }
                 }
             }
-            Ok(Message::StatePower { level }) => {
-                bulb.power_level.update(level);
-            }
-            Ok(Message::StateHostFirmware { version, .. }) => {
-                bulb.host_firmware.update(version);
-            }
-            Ok(Message::StateWifiFirmware { version, .. }) => {
-                bulb.wifi_firmware.update(version);
-            }
-            Ok(Message::LightState {
+            Message::StatePower { level } => bulb.power_level.update(level),
+            Message::StateHostFirmware { version, .. } => bulb.host_firmware.update(version),
+            Message::StateWifiFirmware { version, .. } => bulb.wifi_firmware.update(version),
+            Message::LightState {
                 color,
                 power,
                 label,
                 ..
-            }) => {
+            } => {
                 if let Color::Single(ref mut d) = bulb.color {
                     d.update(color);
                     bulb.power_level.update(power);
                 }
                 bulb.name.update(label.0);
             }
-            Ok(Message::StateZone {
+            Message::StateZone {
                 count,
                 index,
                 color,
-            }) => {
+            } => {
                 if let Color::Multi(ref mut d) = bulb.color {
                     d.data.get_or_insert_with(|| {
                         let mut v = Vec::with_capacity(count as usize);
@@ -313,7 +268,7 @@ impl Manager {
                     })[index as usize] = Some(color);
                 }
             }
-            Ok(Message::StateMultiZone {
+            Message::StateMultiZone {
                 count,
                 index,
                 color0,
@@ -324,7 +279,7 @@ impl Manager {
                 color5,
                 color6,
                 color7,
-            }) => {
+            } => {
                 if let Color::Multi(ref mut d) = bulb.color {
                     let v = d.data.get_or_insert_with(|| {
                         let mut v = Vec::with_capacity(count as usize);
@@ -343,21 +298,18 @@ impl Manager {
                     v[index as usize + 7] = Some(color7);
                 }
             }
-            Ok(msg) => {
-                println!("Received, but ignored {:?}", msg);
-            }
-            Err(e) => {
-                if raw.protocol_header.typ != 3 {
-                    println!(
-                        "Could not decode message of type {}: {:?}",
-                        raw.protocol_header.typ, e
-                    );
-                }
+            unknown => {
+                println!("Received, but ignored {:?}", unknown);
             }
         }
+        Ok(())
     }
 
-    fn worker(recv_sock: UdpSocket, receiver_bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>) {
+    fn worker(
+        recv_sock: UdpSocket,
+        source: u32,
+        receiver_bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>,
+    ) {
         let mut buf = [0; 1024];
         loop {
             match recv_sock.recv_from(&mut buf) {
@@ -368,10 +320,18 @@ impl Manager {
                             continue;
                         }
                         if let Ok(mut bulbs) = receiver_bulbs.lock() {
-                            Self::handle_message(addr, raw, &mut bulbs);
+                            let bulb = bulbs
+                                .entry(raw.frame_addr.target)
+                                .and_modify(|bulb| bulb.update(addr))
+                                .or_insert_with(|| {
+                                    BulbInfo::new(source, raw.frame_addr.target, addr)
+                                });
+                            if let Err(e) = Self::handle_message(raw, bulb) {
+                                println!("Error handling message from {}: {}", addr, e)
+                            }
                         }
                     }
-                    Err(e) => println!("Error unpacking raw message: {:?}", e),
+                    Err(e) => println!("Error unpacking raw message from {}: {}", addr, e),
                 },
                 Err(e) => panic!("recv_from err {:?}", e),
             }
@@ -413,8 +373,7 @@ impl Manager {
     fn refresh(&self) {
         if let Ok(bulbs) = self.bulbs.lock() {
             for bulb in bulbs.values() {
-                bulb.query_for_missing_info(&self.sock, self.source)
-                    .unwrap();
+                bulb.query_for_missing_info(&self.sock).unwrap();
             }
         }
     }
