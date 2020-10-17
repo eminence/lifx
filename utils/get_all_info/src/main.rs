@@ -1,32 +1,10 @@
-#![deny(deprecated)]
-#![allow(dead_code, unused_variables)]
-
-extern crate chrono;
-extern crate failure;
-extern crate get_if_addrs;
-extern crate lifx_core;
-
-use lifx_core::get_product_info;
-use lifx_core::BuildOptions;
-use lifx_core::Message;
-use lifx_core::RawMessage;
-
-use failure::Error;
-
-use std::net::UdpSocket;
-use std::thread::spawn;
-use std::time::Duration;
-
+use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
+use lifx_core::{get_product_info, BuildOptions, Message, PowerLevel, RawMessage, Service, HSBK};
 use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::time::Instant;
-
-use chrono::Local;
-use lifx_core::PowerLevel;
-use lifx_core::HSBK;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::thread;
+use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::sync::{Arc, Mutex};
+use std::thread::{sleep, spawn};
+use std::time::{Duration, Instant};
 
 const HOUR: Duration = Duration::from_secs(60 * 60);
 
@@ -51,31 +29,20 @@ impl<T> RefreshableData<T> {
         self.data = Some(data);
         self.last_updated = Instant::now()
     }
-    fn is_some(&self) -> bool {
-        self.data.is_some()
-    }
-    fn is_none(&self) -> bool {
-        self.data.is_none()
-    }
     fn needs_refresh(&self) -> bool {
         self.data.is_none() || self.last_updated.elapsed() > self.max_age
     }
     fn as_ref(&self) -> Option<&T> {
         self.data.as_ref()
     }
-    fn as_mut(&mut self) -> Option<&mut T> {
-        self.data.as_mut()
-    }
 }
 
-#[derive(Debug)]
 struct BulbInfo {
-    last_seen: chrono::DateTime<Local>,
-    port: u32,
+    last_seen: Instant,
+    source: u32,
     target: u64,
     addr: SocketAddr,
     name: RefreshableData<String>,
-    /// vendor,product tuple
     model: RefreshableData<(u32, u32)>,
     location: RefreshableData<String>,
     host_firmware: RefreshableData<u32>,
@@ -92,14 +59,14 @@ enum Color {
 }
 
 impl BulbInfo {
-    fn new(port: u32, target: u64, addr: SocketAddr) -> BulbInfo {
+    fn new(source: u32, target: u64, addr: SocketAddr) -> BulbInfo {
         BulbInfo {
-            port,
+            last_seen: Instant::now(),
+            source,
             target,
             addr,
             name: RefreshableData::empty(HOUR, Message::GetLabel),
             model: RefreshableData::empty(HOUR, Message::GetVersion),
-            last_seen: Local::now(),
             location: RefreshableData::empty(HOUR, Message::GetLocation),
             host_firmware: RefreshableData::empty(HOUR, Message::GetHostFirmware),
             wifi_firmware: RefreshableData::empty(HOUR, Message::GetWifiFirmware),
@@ -108,131 +75,105 @@ impl BulbInfo {
         }
     }
 
+    fn update(&mut self, addr: SocketAddr) {
+        self.last_seen = Instant::now();
+        self.addr = addr;
+    }
+
+    fn refresh_if_needed<T>(
+        &self,
+        sock: &UdpSocket,
+        data: &RefreshableData<T>,
+    ) -> Result<(), failure::Error> {
+        if data.needs_refresh() {
+            let options = BuildOptions {
+                target: Some(self.target),
+                res_required: true,
+                source: self.source,
+                ..Default::default()
+            };
+            let message = RawMessage::build(&options, data.refresh_msg.clone())?;
+            sock.send_to(&message.pack()?, self.addr)?;
+        }
+        Ok(())
+    }
+
     fn query_for_missing_info(&self, sock: &UdpSocket) -> Result<(), failure::Error> {
-        let opts = BuildOptions {
-            target: Some(self.target),
-            res_required: true,
-            source: 12345678,
-            ..Default::default()
-        };
-
-        if self.name.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.name.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-        if self.model.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.model.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-        if self.location.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.location.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-        if self.host_firmware.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.host_firmware.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-        if self.wifi_firmware.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.wifi_firmware.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-        if self.power_level.needs_refresh() {
-            sock.send_to(
-                &RawMessage::build(&opts, self.power_level.refresh_msg.clone())?.pack()?,
-                self.addr,
-            )?;
-        }
-
-        match self.color {
-            Color::Unknown => {
-                // we'll need to wait to get info about this bulb's model, so we'll know if it's multizone or not
-
-            }
-            Color::Single(ref d) => {
-                sock.send_to(
-                    &RawMessage::build(&opts, d.refresh_msg.clone())?.pack()?,
-                    self.addr,
-                )?;
-            }
-            Color::Multi(ref d) => {
-                sock.send_to(
-                    &RawMessage::build(&opts, d.refresh_msg.clone())?.pack()?,
-                    self.addr,
-                )?;
-            }
+        self.refresh_if_needed(sock, &self.name)?;
+        self.refresh_if_needed(sock, &self.model)?;
+        self.refresh_if_needed(sock, &self.location)?;
+        self.refresh_if_needed(sock, &self.host_firmware)?;
+        self.refresh_if_needed(sock, &self.wifi_firmware)?;
+        self.refresh_if_needed(sock, &self.power_level)?;
+        match &self.color {
+            Color::Unknown => (), // we'll need to wait to get info about this bulb's model, so we'll know if it's multizone or not
+            Color::Single(d) => self.refresh_if_needed(sock, d)?,
+            Color::Multi(d) => self.refresh_if_needed(sock, d)?,
         }
 
         Ok(())
     }
+}
 
-    fn print(&self) {
+impl std::fmt::Debug for BulbInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BulbInfo({:0>16X} - {}  ", self.target, self.addr)?;
+
         if let Some(name) = self.name.as_ref() {
-            if let Some(loc) = self.location.as_ref() {
-                print!("{}/{} ({:0>16X} - {})", name, loc, self.target, self.addr);
-            } else {
-                print!("{} ({:0>16X} - {})", name, self.target, self.addr);
-            }
-        } else {
-            print!("({})", self.target);
+            write!(f, "{}", name)?;
         }
-
+        if let Some(location) = self.location.as_ref() {
+            write!(f, "/{}", location)?;
+        }
         if let Some((vendor, product)) = self.model.as_ref() {
             if let Some(info) = get_product_info(*vendor, *product) {
-                println!(" - {}", info.name);
+                write!(f, " - {} ", info.name)?;
             } else {
-                println!(" - Unknown model");
+                write!(
+                    f,
+                    " - Unknown model (vendor={}, product={}) ",
+                    vendor, product
+                )?;
             }
-        } else {
-            println!();
         }
-
         if let Some(fw_version) = self.host_firmware.as_ref() {
-            print!("  Host FW:{} ", fw_version);
+            write!(f, " McuFW:{:x}", fw_version)?;
         }
         if let Some(fw_version) = self.wifi_firmware.as_ref() {
-            println!("  Wifi FW:{} ", fw_version);
+            write!(f, " WifiFW:{:x}", fw_version)?;
         }
         if let Some(level) = self.power_level.as_ref() {
             if *level == PowerLevel::Enabled {
-                print!("  Powered On");
+                write!(f, "  Powered On(")?;
                 match self.color {
-                    Color::Unknown => {}
+                    Color::Unknown => write!(f, "??")?,
                     Color::Single(ref color) => {
-                        println!(
-                            "  {}",
-                            color.as_ref().map_or("".to_owned(), |c| c.describe(false))
-                        );
+                        f.write_str(
+                            &color
+                                .as_ref()
+                                .map(|c| c.describe(false))
+                                .unwrap_or_else(|| "??".to_owned()),
+                        )?;
                     }
                     Color::Multi(ref color) => {
                         if let Some(vec) = color.as_ref() {
-                            print!("  {} zones: ", vec.len());
+                            write!(f, "Zones: ")?;
                             for zone in vec {
                                 if let Some(color) = zone {
-                                    print!("{} ", color.describe(true))
+                                    write!(f, "{} ", color.describe(true))?;
                                 } else {
-                                    print!("?? ");
+                                    write!(f, "?? ")?;
                                 }
                             }
-                            println!();
-                        } else {
-                            println!();
                         }
                     }
                 }
+                write!(f, ")")?;
             } else {
-                println!("  Powered off");
+                write!(f, "  Powered Off")?;
             }
         }
+        write!(f, ")")
     }
 }
 
@@ -240,8 +181,7 @@ struct Manager {
     bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>,
     last_discovery: Instant,
     sock: UdpSocket,
-    //    udp_sender: Sender<(SocketAddr, RawMessage)>,
-    //    udp_receiver: Receiver<(SocketAddr, RawMessage)>
+    source: u32,
 }
 
 impl Manager {
@@ -250,181 +190,159 @@ impl Manager {
         sock.set_broadcast(true)?;
 
         // spawn a thread that can send to our socket
-        let sender_sock = sock.try_clone()?;
         let recv_sock = sock.try_clone()?;
 
         let bulbs = Arc::new(Mutex::new(HashMap::new()));
         let receiver_bulbs = bulbs.clone();
+        let source = 0x72757374;
 
         // spawn a thread that will receive data from our socket and update our internal data structures
-
-        let receiver_thread = spawn(move || {
-            let mut buf = [0; 1024];
-            loop {
-                match recv_sock.recv_from(&mut buf) {
-                    Ok((0, _)) => panic!("Received a zero-byte datagram"),
-                    Ok((nbytes, addr)) => match RawMessage::unpack(&buf[0..nbytes]) {
-                        Ok(raw) => {
-                            if raw.frame_addr.target == 0 {
-                                continue;
-                            }
-                            if let Ok(mut bulbs) = receiver_bulbs.lock() {
-                                let bulb = bulbs
-                                    .entry(raw.frame_addr.target)
-                                    .and_modify(|b: &mut BulbInfo| {
-                                        b.port = addr.port() as u32;
-                                        b.addr = addr;
-                                        b.last_seen = Local::now();
-                                    }).or_insert_with(|| {
-                                        BulbInfo::new(
-                                            addr.port() as u32,
-                                            raw.frame_addr.target,
-                                            addr,
-                                        )
-                                    });
-
-                                match Message::from_raw(&raw) {
-                                    Ok(Message::StateService { port, .. }) => {
-                                        assert_eq!(port, addr.port() as u32);
-                                    }
-                                    Ok(Message::StateLabel { label }) => {
-                                        bulb.name.update(label.0);
-                                    }
-                                    Ok(Message::StateLocation {
-                                        location,
-                                        label,
-                                        updated_at,
-                                    }) => {
-                                        bulb.location.update(label.0);
-                                    }
-                                    Ok(Message::StateVersion {
-                                        vendor,
-                                        product,
-                                        version,
-                                    }) => {
-                                        bulb.model.update((vendor, product));
-                                        if let Some(info) = get_product_info(vendor, product) {
-                                            if info.multizone {
-                                                bulb.color = Color::Multi(RefreshableData::empty(
-                                                    Duration::from_secs(15),
-                                                    Message::GetColorZones {
-                                                        start_index: 0,
-                                                        end_index: 255,
-                                                    },
-                                                ))
-                                            } else {
-                                                bulb.color = Color::Single(RefreshableData::empty(
-                                                    Duration::from_secs(15),
-                                                    Message::LightGet,
-                                                ))
-                                            }
-                                        }
-                                    }
-                                    Ok(Message::StatePower { level }) => {
-                                        bulb.power_level.update(level);
-                                    }
-                                    Ok(Message::StateHostFirmware { build, version, .. }) => {
-                                        bulb.host_firmware.update(version);
-                                    }
-                                    Ok(Message::StateWifiFirmware { build, version, .. }) => {
-                                        bulb.wifi_firmware.update(version);
-                                    }
-                                    Ok(Message::LightState {
-                                        color,
-                                        power,
-                                        label,
-                                        ..
-                                    }) => {
-                                        if let Color::Single(ref mut d) = bulb.color {
-                                            d.update(color);
-                                            bulb.power_level.update(power);
-                                        }
-                                        bulb.name.update(label.0);
-                                    }
-                                    Ok(Message::StateZone {
-                                        count,
-                                        index,
-                                        color,
-                                    }) => {
-                                        if let Color::Multi(ref mut d) = bulb.color {
-                                            d.data.get_or_insert_with(|| {
-                                                let mut v = Vec::with_capacity(count as usize);
-                                                v.resize(count as usize, None);
-                                                assert!(index <= count);
-                                                v
-                                            })[index as usize] = Some(color);
-                                        }
-                                    }
-                                    Ok(Message::StateMultiZone {
-                                        count,
-                                        index,
-                                        color0,
-                                        color1,
-                                        color2,
-                                        color3,
-                                        color4,
-                                        color5,
-                                        color6,
-                                        color7,
-                                    }) => {
-                                        if let Color::Multi(ref mut d) = bulb.color {
-                                            let mut v = d.data.get_or_insert_with(|| {
-                                                let mut v = Vec::with_capacity(count as usize);
-                                                v.resize(count as usize, None);
-                                                assert!(index + 7 <= count);
-                                                v
-                                            });
-
-                                            v[index as usize + 0] = Some(color0);
-                                            v[index as usize + 1] = Some(color1);
-                                            v[index as usize + 2] = Some(color2);
-                                            v[index as usize + 3] = Some(color3);
-                                            v[index as usize + 4] = Some(color4);
-                                            v[index as usize + 5] = Some(color5);
-                                            v[index as usize + 6] = Some(color6);
-                                            v[index as usize + 7] = Some(color7);
-                                        }
-                                    }
-                                    Ok(msg) => {
-                                        println!("Received, but ignored {:?}", msg);
-                                    }
-                                    Err(e) => {
-                                        if raw.protocol_header.typ != 3 {
-                                            println!(
-                                                "Could not decode message of type {}: {:?}",
-                                                raw.protocol_header.typ, e
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            println!{"Error unpacking raw message: {:?}", e}
-                        }
-                    },
-                    Err(e) => panic!("recv_from err {:?}", e),
-                }
-            }
-        });
+        spawn(move || Self::worker(recv_sock, source, receiver_bulbs));
 
         let mut mgr = Manager {
             bulbs,
             last_discovery: Instant::now(),
             sock,
-            //            udp_receiver: sock_sender_receiver
+            source,
         };
         mgr.discover()?;
         Ok(mgr)
     }
 
-    fn discover(&mut self) -> Result<(), failure::Error> {
-        use get_if_addrs::*;
-        use std::net;
+    fn handle_message(raw: RawMessage, bulb: &mut BulbInfo) -> Result<(), lifx_core::Error> {
+        match Message::from_raw(&raw)? {
+            Message::StateService { port, service } => {
+                if port != bulb.addr.port() as u32 || service != Service::UDP {
+                    println!("Unsupported service: {:?}/{}", service, port);
+                }
+            }
+            Message::StateLabel { label } => bulb.name.update(label.0),
+            Message::StateLocation { label, .. } => bulb.location.update(label.0),
+            Message::StateVersion {
+                vendor, product, ..
+            } => {
+                bulb.model.update((vendor, product));
+                if let Some(info) = get_product_info(vendor, product) {
+                    if info.multizone {
+                        bulb.color = Color::Multi(RefreshableData::empty(
+                            Duration::from_secs(15),
+                            Message::GetColorZones {
+                                start_index: 0,
+                                end_index: 255,
+                            },
+                        ))
+                    } else {
+                        bulb.color = Color::Single(RefreshableData::empty(
+                            Duration::from_secs(15),
+                            Message::LightGet,
+                        ))
+                    }
+                }
+            }
+            Message::StatePower { level } => bulb.power_level.update(level),
+            Message::StateHostFirmware { version, .. } => bulb.host_firmware.update(version),
+            Message::StateWifiFirmware { version, .. } => bulb.wifi_firmware.update(version),
+            Message::LightState {
+                color,
+                power,
+                label,
+                ..
+            } => {
+                if let Color::Single(ref mut d) = bulb.color {
+                    d.update(color);
+                    bulb.power_level.update(power);
+                }
+                bulb.name.update(label.0);
+            }
+            Message::StateZone {
+                count,
+                index,
+                color,
+            } => {
+                if let Color::Multi(ref mut d) = bulb.color {
+                    d.data.get_or_insert_with(|| {
+                        let mut v = Vec::with_capacity(count as usize);
+                        v.resize(count as usize, None);
+                        assert!(index <= count);
+                        v
+                    })[index as usize] = Some(color);
+                }
+            }
+            Message::StateMultiZone {
+                count,
+                index,
+                color0,
+                color1,
+                color2,
+                color3,
+                color4,
+                color5,
+                color6,
+                color7,
+            } => {
+                if let Color::Multi(ref mut d) = bulb.color {
+                    let v = d.data.get_or_insert_with(|| {
+                        let mut v = Vec::with_capacity(count as usize);
+                        v.resize(count as usize, None);
+                        assert!(index + 7 <= count);
+                        v
+                    });
 
+                    v[index as usize + 0] = Some(color0);
+                    v[index as usize + 1] = Some(color1);
+                    v[index as usize + 2] = Some(color2);
+                    v[index as usize + 3] = Some(color3);
+                    v[index as usize + 4] = Some(color4);
+                    v[index as usize + 5] = Some(color5);
+                    v[index as usize + 6] = Some(color6);
+                    v[index as usize + 7] = Some(color7);
+                }
+            }
+            unknown => {
+                println!("Received, but ignored {:?}", unknown);
+            }
+        }
+        Ok(())
+    }
+
+    fn worker(
+        recv_sock: UdpSocket,
+        source: u32,
+        receiver_bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>,
+    ) {
+        let mut buf = [0; 1024];
+        loop {
+            match recv_sock.recv_from(&mut buf) {
+                Ok((0, addr)) => println!("Received a zero-byte datagram from {:?}", addr),
+                Ok((nbytes, addr)) => match RawMessage::unpack(&buf[0..nbytes]) {
+                    Ok(raw) => {
+                        if raw.frame_addr.target == 0 {
+                            continue;
+                        }
+                        if let Ok(mut bulbs) = receiver_bulbs.lock() {
+                            let bulb = bulbs
+                                .entry(raw.frame_addr.target)
+                                .and_modify(|bulb| bulb.update(addr))
+                                .or_insert_with(|| {
+                                    BulbInfo::new(source, raw.frame_addr.target, addr)
+                                });
+                            if let Err(e) = Self::handle_message(raw, bulb) {
+                                println!("Error handling message from {}: {}", addr, e)
+                            }
+                        }
+                    }
+                    Err(e) => println!("Error unpacking raw message from {}: {}", addr, e),
+                },
+                Err(e) => panic!("recv_from err {:?}", e),
+            }
+        }
+    }
+
+    fn discover(&mut self) -> Result<(), failure::Error> {
         println!("Doing discovery");
 
         let opts = BuildOptions {
+            source: self.source,
             ..Default::default()
         };
         let rawmsg = RawMessage::build(&opts, Message::GetService).unwrap();
@@ -433,17 +351,15 @@ impl Manager {
         for addr in get_if_addrs().unwrap() {
             match addr.addr {
                 IfAddr::V4(Ifv4Addr {
-                    ip,
                     broadcast: Some(bcast),
                     ..
                 }) => {
                     if addr.ip().is_loopback() {
                         continue;
                     }
-                    let addr = net::SocketAddr::new(net::IpAddr::V4(bcast), 56700);
+                    let addr = SocketAddr::new(IpAddr::V4(bcast), 56700);
                     println!("Discovering bulbs on LAN {:?}", addr);
                     self.sock.send_to(&bytes, &addr)?;
-                    //                    self.udp_sender.send((addr, rawmsg.clone()));
                 }
                 _ => {}
             }
@@ -475,10 +391,10 @@ fn main() {
         println!("\n\n\n\n");
         if let Ok(bulbs) = mgr.bulbs.lock() {
             for bulb in bulbs.values() {
-                bulb.print();
+                println!("{:?}", bulb);
             }
         }
 
-        thread::sleep(Duration::from_secs(5));
+        sleep(Duration::from_secs(5));
     }
 }
