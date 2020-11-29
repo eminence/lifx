@@ -10,5 +10,5 @@ edition = "2018"
 
 [dependencies]
 byteorder = "1.2.4"
-failure = "0.1.2"
-failure_derive = "0.1.2"
+thiserror = "1.0"
+

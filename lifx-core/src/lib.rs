@@ -24,42 +24,31 @@
 //! suspected to be internal messages that are used by offical LIFX apps, but that aren't documented.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use failure_derive::Fail;
+use thiserror::Error;
 use std::convert::{TryFrom, TryInto};
 use std::io::Cursor;
 use std::{fmt, io};
 
 /// Various message encoding/decoding errors
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
     /// This error means we were unable to parse a raw message because its type is unknown.
     ///
     /// LIFX devices are known to send messages that are not officially documented, so this error
     /// type does not necessarily represent a bug.
+    #[error("unknown message type: `{0}`")]
     UnknownMessageType(u16),
-
     /// This error means one of the message fields contains an invalid or unsupported value.
-    ///
-    /// The inner string is a description of the error.
+    #[error("protocol error: `{0}`")]
     ProtocolError(String),
-    Io(#[cause] io::Error),
-}
 
-impl std::convert::From<io::Error> for Error {
-    fn from(io: io::Error) -> Self {
-        Error::Io(io)
-    }
+    #[error("i/o error")]
+    Io(#[from] io::Error),
 }
 
 impl From<std::convert::Infallible> for Error {
     fn from(_: std::convert::Infallible) -> Self {
         unreachable!()
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "An error occurred.")
     }
 }
 
