@@ -27,7 +27,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use thiserror::Error;
 use std::convert::{TryFrom, TryInto};
 use std::io::Cursor;
-use std::{fmt, io};
+use std::io;
 
 /// Various message encoding/decoding errors
 #[derive(Error, Debug)]
