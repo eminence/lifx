@@ -1,3 +1,9 @@
+[<img alt="github" src="https://img.shields.io/badge/github-eminence/lifx-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/eminence/lifx)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/lifx-core.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/lifx-core)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-lifx--core-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white" height="20">](https://docs.rs/lifx-core)
+
+
+
 LIFX
 ====
 
