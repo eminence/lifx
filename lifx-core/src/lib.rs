@@ -24,10 +24,10 @@
 //! suspected to be internal messages that are used by offical LIFX apps, but that aren't documented.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use thiserror::Error;
 use std::convert::{TryFrom, TryInto};
-use std::io::Cursor;
 use std::io;
+use std::io::Cursor;
+use thiserror::Error;
 
 /// Various message encoding/decoding errors
 #[derive(Error, Debug)]
@@ -1739,13 +1739,46 @@ impl RawMessage {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum TemperatureRange {
+    /// The device supports a range of temperatures
+    Variable { min: u16, max: u16 },
+    /// The device only supports 1 temperature
+    Fixed(u16),
+    /// For devices that aren't lighting products (the LIFX switch)
+    None,
+}
+
 #[derive(Clone, Debug)]
 pub struct ProductInfo {
     pub name: &'static str,
+
+    /// The light changes physical appearance when the Hue value is changed
     pub color: bool,
+
+    /// The light supports emitting infrared light
     pub infrared: bool,
+
+    /// The light supports a 1D linear array of LEDs (the Z and Beam)
     pub multizone: bool,
+
+    /// The light may be connected to physically separated hardware (currently only the LIFX Tile)
     pub chain: bool,
+
+    /// The light supports emitted HEV light
+    pub hev: bool,
+
+    /// The light supports a 2D matrix of LEDs (the Tile and Candle)
+    pub matrix: bool,
+
+    /// The device has relays for controlling physical power to something (the LIFX switch)
+    pub relays: bool,
+
+    /// The device has physical buttons to press (the LIFX switch)
+    pub buttons: bool,
+
+    /// The temperature range this device supports
+    pub temperature_range: TemperatureRange,
 }
 
 /// Look up info about what a LIFX product supports.
@@ -1756,34 +1789,99 @@ pub struct ProductInfo {
 #[rustfmt::skip]
 pub fn get_product_info(vendor: u32, product: u32) -> Option<&'static ProductInfo> {
     match (vendor, product) {
-        (1, 1) => Some(&ProductInfo { name: "Original 1000", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 3) => Some(&ProductInfo { name: "Color 650", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 10) => Some(&ProductInfo { name: "White 800 (Low Voltage)", color: false, infrared: false, multizone: false, chain: false}),
-        (1, 11) => Some(&ProductInfo { name: "White 800 (High Voltage)", color: false, infrared: false, multizone: false, chain: false}),
-        (1, 18) => Some(&ProductInfo { name: "White 900 BR30 (Low Voltage)", color: false, infrared: false, multizone: false, chain: false}),
-        (1, 20) => Some(&ProductInfo { name: "Color 1000 BR30", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 22) => Some(&ProductInfo { name: "Color 1000", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 27) => Some(&ProductInfo { name: "LIFX A19", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 28) => Some(&ProductInfo { name: "LIFX BR30", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 29) => Some(&ProductInfo { name: "LIFX+ A19", color: true, infrared: true, multizone: false, chain: false}),
-        (1, 30) => Some(&ProductInfo { name: "LIFX+ BR30", color: true, infrared: true, multizone: false, chain: false}),
-        (1, 31) => Some(&ProductInfo { name: "LIFX Z", color: true, infrared: false, multizone: true, chain: false}),
-        (1, 32) => Some(&ProductInfo { name: "LIFX Z 2", color: true, infrared: false, multizone: true, chain: false}),
-        (1, 36) => Some(&ProductInfo { name: "LIFX Downlight", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 37) => Some(&ProductInfo { name: "LIFX Downlight", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 38) => Some(&ProductInfo { name: "LIFX Beam", color: true, infrared: false, multizone: true, chain: false}),
-        (1, 43) => Some(&ProductInfo { name: "LIFX A19", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 44) => Some(&ProductInfo { name: "LIFX BR30", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 45) => Some(&ProductInfo { name: "LIFX+ A19", color: true, infrared: true, multizone: false, chain: false}),
-        (1, 46) => Some(&ProductInfo { name: "LIFX+ BR30", color: true, infrared: true, multizone: false, chain: false}),
-        (1, 49) => Some(&ProductInfo { name: "LIFX Mini", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 50) => Some(&ProductInfo { name: "LIFX Mini Day and Dusk", color: false, infrared: false, multizone: false, chain: false}),
-        (1, 51) => Some(&ProductInfo { name: "LIFX Mini White", color: false, infrared: false, multizone: false, chain: false}),
-        (1, 52) => Some(&ProductInfo { name: "LIFX GU10", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 55) => Some(&ProductInfo { name: "LIFX Tile", color: true, infrared: false, multizone: false, chain: true}),
-        (1, 59) => Some(&ProductInfo { name: "LIFX Mini Color", color: true, infrared: false, multizone: false, chain: false}),
-        (1, 60) => Some(&ProductInfo { name: "LIFX Mini Day and Dusk", color: false, infrared: false, multizone: false, chain: false}),
-        (1, 61) => Some(&ProductInfo { name: "LIFX Mini White", color: false, infrared: false, multizone: false, chain: false}),
+        (1, 1) => Some(&ProductInfo { name: "LIFX Original 1000", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, 
+        temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 3) => Some(&ProductInfo { name: "LIFX Color 650", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 10) => Some(&ProductInfo { name: "LIFX White 800 (Low Voltage)", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2700, max: 6500 }  }),
+        (1, 11) => Some(&ProductInfo { name: "LIFX White 800 (High Voltage)", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2700, max: 6500 }  }),
+        (1, 15) => Some(&ProductInfo { name: "LIFX Color 1000", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 18) => Some(&ProductInfo { name: "LIFX White 900 BR30 (Low Voltage)", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 19) => Some(&ProductInfo { name: "LIFX White 900 BR30 (High Voltage)", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 20) => Some(&ProductInfo { name: "LIFX Color 1000 BR30", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 22) => Some(&ProductInfo { name: "LIFX Color 1000", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 27) => Some(&ProductInfo { name: "LIFX A19", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 28) => Some(&ProductInfo { name: "LIFX BR30", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 29) => Some(&ProductInfo { name: "LIFX A19 Night Vision", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 30) => Some(&ProductInfo { name: "LIFX BR30 Night Vision", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 31) => Some(&ProductInfo { name: "LIFX Z", color: true, infrared: false, multizone: true, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 32) => Some(&ProductInfo { name: "LIFX Z", color: true, infrared: false, multizone: true, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 36) => Some(&ProductInfo { name: "LIFX Downlight", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 37) => Some(&ProductInfo { name: "LIFX Downlight", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 38) => Some(&ProductInfo { name: "LIFX Beam", color: true, infrared: false, multizone: true, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 39) => Some(&ProductInfo { name: "LIFX Downlight White to Warm", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 40) => Some(&ProductInfo { name: "LIFX Downlight", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 43) => Some(&ProductInfo { name: "LIFX A19", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 44) => Some(&ProductInfo { name: "LIFX BR30", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 45) => Some(&ProductInfo { name: "LIFX A19 Night Vision", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 46) => Some(&ProductInfo { name: "LIFX BR30 Night Vision", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 49) => Some(&ProductInfo { name: "LIFX Mini Color", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 50) => Some(&ProductInfo { name: "LIFX Mini White to Warm", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: 
+        false, temperature_range: TemperatureRange::Variable { min: 1500, max: 6500 }  }),
+        (1, 51) => Some(&ProductInfo { name: "LIFX Mini White", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2700, max: 2700 }  }),
+        (1, 52) => Some(&ProductInfo { name: "LIFX GU10", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 53) => Some(&ProductInfo { name: "LIFX GU10", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 55) => Some(&ProductInfo { name: "LIFX Tile", color: true, infrared: false, multizone: false, chain: true, hev: false, matrix: true, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2500, max: 9000 }  }),
+        (1, 57) => Some(&ProductInfo { name: "LIFX Candle", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: true, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 59) => Some(&ProductInfo { name: "LIFX Mini Color", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 60) => Some(&ProductInfo { name: "LIFX Mini White to Warm", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: 
+        false, temperature_range: TemperatureRange::Variable { min: 1500, max: 6500 }  }),
+        (1, 61) => Some(&ProductInfo { name: "LIFX Mini White", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2700, max: 2700 }  }),
+        (1, 62) => Some(&ProductInfo { name: "LIFX A19", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 63) => Some(&ProductInfo { name: "LIFX BR30", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 64) => Some(&ProductInfo { name: "LIFX A19 Night Vision", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 65) => Some(&ProductInfo { name: "LIFX BR30 Night Vision", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 66) => Some(&ProductInfo { name: "LIFX Mini White", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2700, max: 2700 }  }),
+        (1, 68) => Some(&ProductInfo { name: "LIFX Candle", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: true, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 70) => Some(&ProductInfo { name: "LIFX Switch", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: true, buttons: true, temperature_range: TemperatureRange::None }),
+        (1, 71) => Some(&ProductInfo { name: "LIFX Switch", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: true, buttons: true, temperature_range: TemperatureRange::None }),
+        (1, 81) => Some(&ProductInfo { name: "LIFX Candle White to Warm", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2200, max: 6500 }  }),
+        (1, 82) => Some(&ProductInfo { name: "LIFX Filament Clear", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2100, max: 2100 }  }),
+        (1, 85) => Some(&ProductInfo { name: "LIFX Filament Amber", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2000, max: 2000 }  }),
+        (1, 87) => Some(&ProductInfo { name: "LIFX Mini White", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2700, max: 2700 }  }),
+        (1, 88) => Some(&ProductInfo { name: "LIFX Mini White", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2700, max: 2700 }  }),
+        (1, 89) => Some(&ProductInfo { name: "LIFX Switch", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: true, buttons: true, temperature_range: TemperatureRange::None }),
+        (1, 90) => Some(&ProductInfo { name: "LIFX Clean", color: true, infrared: false, multizone: false, chain: false, hev: true, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 91) => Some(&ProductInfo { name: "LIFX Color", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 92) => Some(&ProductInfo { name: "LIFX Color", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 93) => Some(&ProductInfo { name: "LIFX A19 US", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 94) => Some(&ProductInfo { name: "LIFX BR30", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 96) => Some(&ProductInfo { name: "LIFX Candle White to Warm", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2200, max: 6500 }  }),
+        (1, 97) => Some(&ProductInfo { name: "LIFX A19", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 98) => Some(&ProductInfo { name: "LIFX BR30", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 99) => Some(&ProductInfo { name: "LIFX Clean", color: true, infrared: false, multizone: false, chain: false, hev: true, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 100) => Some(&ProductInfo { name: "LIFX Filament Clear", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2100, max: 2100 }  }),
+        (1, 101) => Some(&ProductInfo { name: "LIFX Filament Amber", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2000, max: 2000 }  }),
+        (1, 109) => Some(&ProductInfo { name: "LIFX A19 Night Vision", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 110) => Some(&ProductInfo { name: "LIFX BR30 Night Vision", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 111) => Some(&ProductInfo { name: "LIFX A19 Night Vision", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 112) => Some(&ProductInfo { name: "LIFX BR30 Night Vision Intl", color: true, infrared: true, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 113) => Some(&ProductInfo { name: "LIFX Mini WW US", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, 
+        temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 114) => Some(&ProductInfo { name: "LIFX Mini WW Intl", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 115) => Some(&ProductInfo { name: "LIFX Switch", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: true, buttons: true, temperature_range: TemperatureRange::None }),
+        (1, 116) => Some(&ProductInfo { name: "LIFX Switch", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: true, buttons: true, temperature_range: TemperatureRange::None }),
+        (1, 117) => Some(&ProductInfo { name: "LIFX Z", color: true, infrared: false, multizone: true, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 118) => Some(&ProductInfo { name: "LIFX Z", color: true, infrared: false, multizone: true, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 119) => Some(&ProductInfo { name: "LIFX Beam", color: true, infrared: false, multizone: true, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 120) => Some(&ProductInfo { name: "LIFX Beam", color: true, infrared: false, multizone: true, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 123) => Some(&ProductInfo { name: "LIFX Color US", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 124) => Some(&ProductInfo { name: "LIFX Color Intl", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 125) => Some(&ProductInfo { name: "LIFX White to Warm US", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 126) => Some(&ProductInfo { name: "LIFX White to Warm Intl", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 127) => Some(&ProductInfo { name: "LIFX White US", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2700, max: 2700 }  }),
+        (1, 128) => Some(&ProductInfo { name: "LIFX White Intl", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, 
+        temperature_range: TemperatureRange::Variable { min: 2700, max: 2700 }  }),
+        (1, 129) => Some(&ProductInfo { name: "LIFX Color US", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 130) => Some(&ProductInfo { name: "LIFX Color Intl", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 131) => Some(&ProductInfo { name: "LIFX White To Warm US", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 132) => Some(&ProductInfo { name: "LIFX White To Warm Intl", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 133) => Some(&ProductInfo { name: "LIFX White US", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 2700, max: 2700 }  }),
+        (1, 134) => Some(&ProductInfo { name: "LIFX White Intl", color: false, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, 
+        temperature_range: TemperatureRange::Variable { min: 2700, max: 2700 }  }),
+        (1, 135) => Some(&ProductInfo { name: "LIFX GU10 Color US", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 136) => Some(&ProductInfo { name: "LIFX GU10 Color Intl", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: false, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 137) => Some(&ProductInfo { name: "LIFX Candle Color US", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: true, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
+        (1, 138) => Some(&ProductInfo { name: "LIFX Candle Color Intl", color: true, infrared: false, multizone: false, chain: false, hev: false, matrix: true, relays: false, buttons: false, temperature_range: TemperatureRange::Variable { min: 1500, max: 9000 }  }),
         (_, _) => None
     }
 }
