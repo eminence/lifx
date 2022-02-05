@@ -113,6 +113,8 @@ impl TryFrom<u16> for PowerLevel {
 }
 
 #[derive(Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub struct EchoPayload(pub [u8; 64]);
 
 impl std::fmt::Debug for EchoPayload {
@@ -122,10 +124,12 @@ impl std::fmt::Debug for EchoPayload {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct LifxIdent(pub [u8; 16]);
 
 /// Lifx strings are fixed-length (32-bytes maximum)
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct LifxString(pub String);
 
 impl LifxString {
@@ -472,6 +476,7 @@ macro_rules! unpack {
 /// service cannot be constructed.
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Service {
     UDP = 1,
     Reserved1 = 2,
@@ -482,6 +487,7 @@ pub enum Service {
 
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PowerLevel {
     Standby = 0,
     Enabled = 65535,
@@ -492,6 +498,8 @@ pub enum PowerLevel {
 /// See also [Message::SetColorZones].
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum ApplicationRequest {
     /// Don't apply the requested changes until a message with Apply or ApplyOnly is sent
     NoApply = 0,
@@ -503,6 +511,8 @@ pub enum ApplicationRequest {
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum Waveform {
     Saw = 0,
     Sine = 1,
@@ -513,6 +523,8 @@ pub enum Waveform {
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum LastHevCycleResult {
     Success = 0,
     Busy = 1,
@@ -525,6 +537,8 @@ pub enum LastHevCycleResult {
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum MultiZoneEffectType {
     Off = 0,
     Move = 1,
@@ -539,6 +553,8 @@ pub enum MultiZoneEffectType {
 /// Note that other message types exist, but are not officially documented (and so are not
 /// available here).
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum Message {
     /// Sent by a client to acquire responses from all devices on the local network. No payload is
     /// required. Causes the devices to transmit a [Message::StateService] message.
@@ -1380,6 +1396,7 @@ impl Message {
 ///
 /// To display "pure" colors, set saturation to full (65535).
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct HSBK {
     pub hue: u16,
     pub saturation: u16,
