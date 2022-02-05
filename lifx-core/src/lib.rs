@@ -1,14 +1,14 @@
 //! This crate provides low-level message types and structures for dealing with the LIFX LAN protocol.
 //!
 //! This lets you control lights on your local area network.  More info can be found here:
-//! https://lan.developer.lifx.com/
+//! <https://lan.developer.lifx.com/>
 //!
 //! Since this is a low-level library, it does not deal with issues like talking to the network,
 //! caching light state, or waiting for replies.  This should be done at a higher-level library.
 //!
 //! # Discovery
 //!
-//! To discover lights on your LAN, send a [Message::GetService] message as a UDP broadcast to port 56700
+//! To discover lights on your LAN, send a [Message::GetService] message as a UDP broadcast to port 56700.
 //! When a device is discovered, the [Service] types and IP port are provided.  To get additional
 //! info about each device, send additional Get messages directly to each device (by setting the
 //! [FrameAddress::target] field to the bulbs target ID, and then send a UDP packet to the IP address
@@ -416,15 +416,15 @@ pub enum Waveform {
 /// available here).
 #[derive(Clone, Debug)]
 pub enum Message {
-    /// GetService - 2
-    ///
     /// Sent by a client to acquire responses from all devices on the local network. No payload is
     /// required. Causes the devices to transmit a StateService message.
+    ///
+    /// Message type 2
     GetService,
 
-    /// StateService - 3
-    ///
     /// Response to [Message::GetService] message.
+    ///
+    /// Message type 3
     StateService {
         /// Port number of the light.  If the service is temporarily unavailable, then the port value
         /// will be 0.
@@ -433,17 +433,17 @@ pub enum Message {
         service: Service,
     },
 
-    /// GetHostInfo - 12
-    ///
     /// Get Host MCU information. No payload is required. Causes the device to transmit a
     /// [Message::StateHostInfo] message.
+    ///
+    /// Message type 12
     GetHostInfo,
 
-    /// StateHostInfo - 13
-    ///
     /// Response to [Message::GetHostInfo] message.
     ///
     /// Provides host MCU information.
+    ///
+    /// Message type 13
     StateHostInfo {
         /// radio receive signal strength in miliWatts
         signal: f32,
@@ -454,17 +454,18 @@ pub enum Message {
         reserved: i16,
     },
 
-    /// GetHostFirmware - 14
+    /// Gets Host MCU firmware information. No payload is required.
     ///
-    /// Gets Host MCU firmware information. No payload is required. Causes the device to transmit a
-    /// [Message::StateHostFirmware] message.
+    /// Causes the device to transmit a [Message::StateHostFirmware] message.
+    ///
+    /// Message type 14
     GetHostFirmware,
 
-    /// StateHostFirmware - 15
-    ///
     /// Response to [Message::GetHostFirmware] message.
     ///
     /// Provides host firmware information.
+    ///
+    /// Message type 15
     StateHostFirmware {
         /// Firmware build time (absolute time in nanoseconds since epoch)
         build: u64,
@@ -473,10 +474,10 @@ pub enum Message {
         version: u32,
     },
 
-    /// GetWifiInfo - 16
-    ///
     /// Get Wifi subsystem information. No payload is required. Causes the device to transmit a
     /// [Message::StateWifiInfo] message.
+    ///
+    /// Message type 16
     GetWifiInfo,
 
     /// StateWifiInfo - 17
@@ -484,6 +485,8 @@ pub enum Message {
     /// Response to [Message::GetWifiInfo] message.
     ///
     /// Provides Wifi subsystem information.
+    ///
+    /// Message type 17
     StateWifiInfo {
         /// Radio receive signal strength in mw
         signal: f32,
@@ -494,17 +497,17 @@ pub enum Message {
         reserved: i16,
     },
 
-    /// GetWifiFirmware - 18
-    ///
     /// Get Wifi subsystem firmware. No payload is required. Causes the device to transmit a
     /// [Message::StateWifiFirmware] message.
+    ///
+    /// Message type 18
     GetWifiFirmware,
 
-    /// StateWifiFirmware - 19
-    /// \
     /// Response to [Message::GetWifiFirmware] message.
     ///
     /// Provides Wifi subsystem information.
+    ///
+    /// Message type 19
     StateWifiFirmware {
         /// firmware build time (absolute time in nanoseconds since epoch)
         build: u64,
@@ -513,15 +516,15 @@ pub enum Message {
         version: u32,
     },
 
-    /// GetPower - 20
-    ///
     /// Get device power level. No payload is required. Causes the device to transmit a [Message::StatePower]
     /// message
+    ///
+    /// Message type 20
     GetPower,
 
-    /// SetPower - 21
-    ///
     /// Set device power level.
+    ///
+    /// Message type 21
     SetPower {
         /// normally a u16, but only 0 and 65535 are supported.
         ///
@@ -529,42 +532,43 @@ pub enum Message {
         level: PowerLevel,
     },
 
-    /// StatePower - 22
-    ///
     /// Response to [Message::GetPower] message.
     ///
     /// Provides device power level.
+    ///
+    /// Message type 22
     StatePower { level: PowerLevel },
 
-    /// GetLabel - 23
     ///
     /// Get device label. No payload is required. Causes the device to transmit a [Message::StateLabel]
     /// message.
+    ///
+    /// Message type 23
     GetLabel,
 
-    /// SetLabel - 24
-    ///
     /// Set the device label text.
+    ///
+    /// Message type 24
     SetLabel { label: LifxString },
 
-    /// StateLabel - 25
-    ///
     /// Response to [Message::GetLabel] message.
     ///
     /// Provides device label.
+    ///
+    /// Message type 25
     StateLabel { label: LifxString },
 
-    /// GetVersion - 32
-    ///
     /// Get the hardware version. No payload is required. Causes the device to transmit a
     /// [Message::StateVersion] message.
+    ///
+    /// Message type 32
     GetVersion,
 
-    /// StateVersion - 33
-    ///
     /// Response to [Message::GetVersion] message.
     ///
     /// Provides the hardware version of the device.
+    ///
+    /// Message type 33
     StateVersion {
         /// vendor ID
         vendor: u32,
@@ -574,17 +578,17 @@ pub enum Message {
         version: u32,
     },
 
-    /// GetInfo - 34
-    ///
     /// Get run-time information. No payload is required. Causes the device to transmit a [Message::StateInfo]
     /// message.
+    ///
+    /// Message type 34
     GetInfo,
 
-    /// StateInfo - 35
-    ///
     /// Response to [Message::GetInfo] message.
     ///
     /// Provides run-time information of device.
+    ///
+    /// Message type 35
     StateInfo {
         /// current time (absolute time in nanoseconds since epoch)
         time: u64,
@@ -594,23 +598,23 @@ pub enum Message {
         downtime: u64,
     },
 
-    /// Acknowledgement - 45
-    ///
     /// Response to any message sent with ack_required set to 1. See message header frame address.
     ///
     /// (Note that technically this message has no payload, but the frame sequence number is stored
     /// here for convenience).
+    ///
+    /// Message type 45
     Acknowledgement { seq: u8 },
 
-    /// GetLocation - 48
-    ///
     /// Ask the bulb to return its location information. No payload is required. Causes the device
     /// to transmit a [Message::StateLocation] message.
+    ///
+    /// Message type 48
     GetLocation,
 
-    /// SetLocation -- 49
-    ///
     /// Set the device location
+    ///
+    /// Message type 49
     SetLocation {
         /// GUID byte array
         location: LifxIdent,
@@ -620,66 +624,65 @@ pub enum Message {
         updated_at: u64,
     },
 
-    /// StateLocation - 50
-    ///
     /// Device location.
+    ///
+    /// Message type 50
     StateLocation {
         location: LifxIdent,
         label: LifxString,
         updated_at: u64,
     },
 
-    /// GetGroup - 51
-    ///
     /// Ask the bulb to return its group membership information.
     /// No payload is required.
     /// Causes the device to transmit a [Message::StateGroup] message.
+    ///
+    /// Message type 51
     GetGroup,
 
-    /// SetGroup - 52
-    ///
     /// Set the device group
+    ///
+    /// Message type 52
     SetGroup {
         group: LifxIdent,
         label: LifxString,
         updated_at: u64,
     },
 
-    /// StateGroup - 53
-    ///
     /// Device group.
+    ///
+    /// Message type 53
     StateGroup {
         group: LifxIdent,
         label: LifxString,
         updated_at: u64,
     },
 
-    /// EchoRequest - 58
-    ///
     /// Request an arbitrary payload be echoed back. Causes the device to transmit an [Message::EchoResponse]
     /// message.
+    ///
+    /// Message type 58
     EchoRequest { payload: EchoPayload },
 
-    /// EchoResponse - 59
-    ///
     /// Response to [Message::EchoRequest] message.
     ///
     /// Echo response with payload sent in the EchoRequest.
     ///
+    /// Message type 59
     EchoResponse { payload: EchoPayload },
 
-    /// Get - 101
-    ///
     /// Sent by a client to obtain the light state. No payload required. Causes the device to
     /// transmit a [Message::LightState] message.
+    ///
+    /// Message type 101
     LightGet,
 
-    /// SetColor - 102
-    ///
     /// Sent by a client to change the light state.
     ///
     /// If the Frame Address res_required field is set to one (1) then the device will transmit a
     /// State message.
+    ///
+    /// Message type 102
     LightSetColor {
         reserved: u8,
         /// Color in HSBK
@@ -688,9 +691,9 @@ pub enum Message {
         duration: u32,
     },
 
-    /// SetWaveform - 103
-    ///
     /// Apply an effect to the bulb.
+    ///
+    /// Message type 103
     SetWaveform {
         reserved: u8,
         transient: bool,
@@ -705,9 +708,9 @@ pub enum Message {
         waveform: Waveform,
     },
 
-    /// State - 107
-    ///
     /// Sent by a device to provide the current light state.
+    ///
+    /// Message type 107
     LightState {
         color: HSBK,
         reserved: i16,
@@ -716,38 +719,30 @@ pub enum Message {
         reserved2: u64,
     },
 
-    /// GetPower - 116
-    ///
     /// Sent by a client to obtain the power level. No payload required. Causes the device to
     /// transmit a StatePower message.
+    ///
+    /// Message type 116
     LightGetPower,
 
-    /// SetPower - 117
-    ///
     /// Sent by a client to change the light power level.
-    ///
-    /// Field   Type
-    /// level   unsigned 16-bit integer
-    /// duration    unsigned 32-bit integer
-    /// The power level must be either 0 or 65535.
     ///
     /// The duration is the power level transition time in milliseconds.
     ///
     /// If the Frame Address res_required field is set to one (1) then the device will transmit a
     /// StatePower message.
+    ///
+    /// Message type 117
     LightSetPower { level: u16, duration: u32 },
 
-    /// StatePower - 118
-    ///
     /// Sent by a device to provide the current power level.
     ///
-    /// Field   Type
-    /// level   unsigned 16-bit integer
+    /// Message type 118
     LightStatePower { level: u16 },
 
-    /// SetWaveformOptional - 119
-    ///
     /// Apply an effect to the bulb.
+    ///
+    /// Message type 119
     SetWaveformOptional {
         reserved: u8,
         transient: bool,
@@ -765,26 +760,26 @@ pub enum Message {
         set_kelvin: bool,
     },
 
-    /// GetInfrared - 120
-    ///
     /// Gets the current maximum power level of the Infraed channel
+    ///
+    /// Message type 120
     LightGetInfrared,
 
-    /// StateInfrared - 121
-    ///
     /// Indicates the current maximum setting for the infrared channel.
+    ///
+    /// Message type 121
     LightStateInfrared { brightness: u16 },
 
-    /// SetInfrared -- 122
-    ///
     /// Set the current maximum brightness for the infrared channel.
+    ///
+    /// Message type 122
     LightSetInfrared { brightness: u16 },
 
-    /// SetColorZones - 501
-    ///
     /// This message is used for changing the color of either a single or multiple zones.
     /// The changes are stored in a buffer and are only applied once a message with either
     /// [ApplicationRequest::Apply] or [ApplicationRequest::ApplyOnly] set.
+    ///
+    /// Message type 501
     SetColorZones {
         start_index: u8,
         end_index: u8,
@@ -793,29 +788,29 @@ pub enum Message {
         apply: ApplicationRequest,
     },
 
-    /// GetColorZones - 502
-    ///
     /// GetColorZones is used to request the zone colors for a range of zones. The bulb will respond
     /// with either [Message::StateZone] or [Message::StateMultiZone] messages as required to cover
     /// the requested range. The bulb may send state messages that cover more than the requested
     /// zones. Any zones outside the requested indexes will still contain valid values at the time
     /// the message was sent.
+    ///
+    /// Message type 502
     GetColorZones { start_index: u8, end_index: u8 },
-
-    /// StateZone - 503
 
     /// The StateZone message represents the state of a single zone with the `index` field indicating
     /// which zone is represented. The `count` field contains the count of the total number of zones
     /// available on the device.
+    ///
+    /// Message type 503
     StateZone { count: u8, index: u8, color: HSBK },
 
-    /// StateMultiZone - 506
-    ///
     /// The StateMultiZone message represents the state of eight consecutive zones in a single message.
     /// As in the StateZone message the `count` field represents the count of the total number of
     /// zones available on the device. In this message the `index` field represents the index of
     /// `color0` and the rest of the colors are the consecutive zones thus the index of the
     /// `color_n` zone will be `index + n`.
+    ///
+    /// Message type 506
     StateMultiZone {
         count: u8,
         index: u8,
@@ -831,6 +826,9 @@ pub enum Message {
 }
 
 impl Message {
+    /// Get the message type
+    ///
+    /// This will be used in the `typ` field of the [ProtocolHeader].
     pub fn get_num(&self) -> u16 {
         match *self {
             Message::GetService => 2,
@@ -1185,6 +1183,8 @@ pub struct ProtocolHeader {
     pub reserved: u64,
 
     /// 16 bits: Message type determines the payload being used
+    ///
+    /// See also [Message::get_num]
     pub typ: u16,
 
     /// 16 bits: Reserved
@@ -1785,7 +1785,7 @@ pub struct ProductInfo {
 ///
 /// You can get the vendor and product IDs from a bulb by receiving a [Message::StateVersion] message
 ///
-/// Data is taken from https://github.com/LIFX/products/blob/master/products.json
+/// Data is taken from <https://github.com/LIFX/products/blob/master/products.json>
 #[rustfmt::skip]
 pub fn get_product_info(vendor: u32, product: u32) -> Option<&'static ProductInfo> {
     match (vendor, product) {
