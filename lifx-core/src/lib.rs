@@ -87,13 +87,16 @@ impl TryFrom<u8> for Waveform {
 impl TryFrom<u8> for Service {
     type Error = Error;
     fn try_from(val: u8) -> Result<Service, Error> {
-        if val != Service::UDP as u8 {
-            Err(Error::ProtocolError(format!(
+        match val {
+            x if x == Service::UDP as u8 => Ok(Service::UDP),
+            x if x == Service::Reserved1 as u8 => Ok(Service::Reserved1),
+            x if x == Service::Reserved2 as u8 => Ok(Service::Reserved2),
+            x if x == Service::Reserved3 as u8 => Ok(Service::Reserved3),
+            x if x == Service::Reserved4 as u8 => Ok(Service::Reserved4),
+            val => Err(Error::ProtocolError(format!(
                 "Unknown service value {}",
                 val
-            )))
-        } else {
-            Ok(Service::UDP)
+            ))),
         }
     }
 }
@@ -259,6 +262,45 @@ where
     }
 }
 
+impl<T> LittleEndianWriter<LastHevCycleResult> for T
+where
+    T: WriteBytesExt,
+{
+    fn write_val(&mut self, v: LastHevCycleResult) -> Result<(), io::Error> {
+        self.write_u8(v as u8)
+    }
+}
+
+impl<T> LittleEndianWriter<MultiZoneEffectType> for T
+where
+    T: WriteBytesExt,
+{
+    fn write_val(&mut self, v: MultiZoneEffectType) -> Result<(), io::Error> {
+        self.write_u8(v as u8)
+    }
+}
+
+impl<T> LittleEndianWriter<&[HSBK; 82]> for T
+where
+    T: WriteBytesExt,
+{
+    fn write_val(&mut self, v: &[HSBK; 82]) -> Result<(), io::Error> {
+        for elem in v {
+            self.write_val(*elem)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T> LittleEndianWriter<&[u8; 32]> for T
+where
+    T: WriteBytesExt,
+{
+    fn write_val(&mut self, v: &[u8; 32]) -> Result<(), io::Error> {
+        self.write_all(v)
+    }
+}
+
 trait LittleEndianReader<T> {
     fn read_val(&mut self) -> Result<T, io::Error>;
 }
@@ -281,6 +323,63 @@ derive_reader! { read_u32: u32, read_u16: u16, read_i16: i16, read_u64: u64, rea
 impl<R: ReadBytesExt> LittleEndianReader<u8> for R {
     fn read_val(&mut self) -> Result<u8, io::Error> {
         self.read_u8()
+    }
+}
+
+impl<R: ReadBytesExt> LittleEndianReader<bool> for R {
+    fn read_val(&mut self) -> Result<bool, io::Error> {
+        Ok(self.read_u8()? > 0)
+    }
+}
+
+impl<R: ReadBytesExt> LittleEndianReader<LastHevCycleResult> for R {
+    fn read_val(&mut self) -> Result<LastHevCycleResult, io::Error> {
+        let val: u8 = self.read_val()?;
+        match val {
+            0 => Ok(LastHevCycleResult::Success),
+            1 => Ok(LastHevCycleResult::Busy),
+            2 => Ok(LastHevCycleResult::InterruptedByReset),
+            3 => Ok(LastHevCycleResult::InterruptedByHomekit),
+            4 => Ok(LastHevCycleResult::InterruptedByLan),
+            5 => Ok(LastHevCycleResult::InterruptedByCloud),
+            _ => Ok(LastHevCycleResult::None),
+        }
+    }
+}
+
+impl<R: ReadBytesExt> LittleEndianReader<MultiZoneEffectType> for R {
+    fn read_val(&mut self) -> Result<MultiZoneEffectType, io::Error> {
+        let val: u8 = self.read_val()?;
+        match val {
+            0 => Ok(MultiZoneEffectType::Off),
+            1 => Ok(MultiZoneEffectType::Move),
+            2 => Ok(MultiZoneEffectType::Reserved1),
+            _ => Ok(MultiZoneEffectType::Reserved2),
+        }
+    }
+}
+
+impl<R: ReadBytesExt> LittleEndianReader<[u8; 32]> for R {
+    fn read_val(&mut self) -> Result<[u8; 32], io::Error> {
+        let mut data = [0; 32];
+        self.read_exact(&mut data)?;
+        Ok(data)
+    }
+}
+
+impl<R: ReadBytesExt> LittleEndianReader<[HSBK; 82]> for R {
+    fn read_val(&mut self) -> Result<[HSBK; 82], io::Error> {
+        let mut data = [HSBK {
+            hue: 0,
+            saturation: 0,
+            brightness: 0,
+            kelvin: 0,
+        }; 82];
+        for x in &mut data {
+            *x = self.read_val()?;
+        }
+
+        Ok(data)
     }
 }
 
@@ -333,7 +432,7 @@ impl<R: ReadBytesExt> LittleEndianReader<EchoPayload> for R {
 }
 
 macro_rules! unpack {
-    ($msg:ident, $typ:ident, $( $n:ident: $t:ident ),*) => {
+    ($msg:ident, $typ:ident, $( $n:ident: $t:ty ),*) => {
         {
         let mut c = Cursor::new(&$msg.payload);
         $(
@@ -375,6 +474,10 @@ macro_rules! unpack {
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Service {
     UDP = 1,
+    Reserved1 = 2,
+    Reserved2 = 3,
+    Reserved3 = 4,
+    Reserved4 = 5,
 }
 
 #[repr(u16)]
@@ -408,6 +511,27 @@ pub enum Waveform {
     Pulse = 4,
 }
 
+#[repr(u8)]
+#[derive(Debug, Copy, Clone)]
+pub enum LastHevCycleResult {
+    Success = 0,
+    Busy = 1,
+    InterruptedByReset = 2,
+    InterruptedByHomekit = 3,
+    InterruptedByLan = 4,
+    InterruptedByCloud = 5,
+    None = 255,
+}
+
+#[repr(u8)]
+#[derive(Debug, Copy, Clone)]
+pub enum MultiZoneEffectType {
+    Off = 0,
+    Move = 1,
+    Reserved1 = 2,
+    Reserved2 = 3,
+}
+
 /// Decoded LIFX Messages
 ///
 /// This enum lists all of the LIFX message types known to this library.
@@ -417,12 +541,15 @@ pub enum Waveform {
 #[derive(Clone, Debug)]
 pub enum Message {
     /// Sent by a client to acquire responses from all devices on the local network. No payload is
-    /// required. Causes the devices to transmit a StateService message.
+    /// required. Causes the devices to transmit a [Message::StateService] message.
     ///
     /// Message type 2
     GetService,
 
     /// Response to [Message::GetService] message.
+    ///
+    /// You'll want to save the port number in this message, so you can send future messages directly
+    /// to this device.
     ///
     /// Message type 3
     StateService {
@@ -454,7 +581,7 @@ pub enum Message {
         reserved: i16,
     },
 
-    /// Gets Host MCU firmware information. No payload is required.
+    /// Gets Host MCU firmware information
     ///
     /// Causes the device to transmit a [Message::StateHostFirmware] message.
     ///
@@ -470,8 +597,10 @@ pub enum Message {
         /// Firmware build time (absolute time in nanoseconds since epoch)
         build: u64,
         reserved: u64,
-        /// Firmware version
-        version: u32,
+        /// The minor component of the firmware version
+        version_minor: u16,
+        /// The major component of the firmware version
+        version_major: u16,
     },
 
     /// Get Wifi subsystem information. No payload is required. Causes the device to transmit a
@@ -488,17 +617,25 @@ pub enum Message {
     ///
     /// Message type 17
     StateWifiInfo {
-        /// Radio receive signal strength in mw
+        /// Radio receive signal strength
+        ///
+        /// The units of this field varies between different products.  See this LIFX doc for more info:
+        /// <https://lan.developer.lifx.com/docs/information-messages#statewifiinfo---packet-17>
         signal: f32,
-        /// bytes transmitted since power on
-        tx: u32,
-        /// bytes received since power on
-        rx: u32,
+        /// Reserved
+        ///
+        /// This field used to store bytes transmitted since power on
+        reserved6: u32,
+        /// Reserved
+        ///
+        /// This field used to store bytes received since power on
+        reserved7: u32,
         reserved: i16,
     },
 
-    /// Get Wifi subsystem firmware. No payload is required. Causes the device to transmit a
-    /// [Message::StateWifiFirmware] message.
+    /// Get Wifi subsystem firmware
+    ///
+    /// Causes the device to transmit a [Message::StateWifiFirmware] message.
     ///
     /// Message type 18
     GetWifiFirmware,
@@ -512,12 +649,15 @@ pub enum Message {
         /// firmware build time (absolute time in nanoseconds since epoch)
         build: u64,
         reserved: u64,
-        /// firmware version
-        version: u32,
+        /// The minor component of the firmware version
+        version_minor: u16,
+        /// The major component of the firmware version
+        version_major: u16,
     },
 
-    /// Get device power level. No payload is required. Causes the device to transmit a [Message::StatePower]
-    /// message
+    /// Get device power level
+    ///
+    /// Causes the device to transmit a [Message::StatePower] message
     ///
     /// Message type 20
     GetPower,
@@ -537,11 +677,19 @@ pub enum Message {
     /// Provides device power level.
     ///
     /// Message type 22
-    StatePower { level: PowerLevel },
+    StatePower {
+        /// The current level of the device's power
+        ///
+        /// A value of `0` means off, and any other value means on.  Note that `65535`
+        /// is full power and during a power transition the value may be any value
+        /// between `0` and `65535`.
+        level: u16,
+    },
 
     ///
-    /// Get device label. No payload is required. Causes the device to transmit a [Message::StateLabel]
-    /// message.
+    /// Get device label
+    ///
+    /// Causes the device to transmit a [Message::StateLabel] message.
     ///
     /// Message type 23
     GetLabel,
@@ -558,28 +706,35 @@ pub enum Message {
     /// Message type 25
     StateLabel { label: LifxString },
 
-    /// Get the hardware version. No payload is required. Causes the device to transmit a
-    /// [Message::StateVersion] message.
+    /// Get the hardware version
+    ///
+    /// Causes the device to transmit a [Message::StateVersion] message.
     ///
     /// Message type 32
     GetVersion,
 
     /// Response to [Message::GetVersion] message.
     ///
-    /// Provides the hardware version of the device.
+    /// Provides the hardware version of the device. To get more information about this product,
+    /// use the [get_product_info] function.
     ///
     /// Message type 33
     StateVersion {
         /// vendor ID
+        ///
+        /// For LIFX products, this value is `1`.
         vendor: u32,
         /// product ID
         product: u32,
-        /// hardware version
-        version: u32,
+        /// Reserved
+        ///
+        /// Previously, this field stored the hardware version
+        reserved: u32,
     },
 
-    /// Get run-time information. No payload is required. Causes the device to transmit a [Message::StateInfo]
-    /// message.
+    /// Get run-time information
+    ///
+    /// Causes the device to transmit a [Message::StateInfo] message.
     ///
     /// Message type 34
     GetInfo,
@@ -590,11 +745,15 @@ pub enum Message {
     ///
     /// Message type 35
     StateInfo {
-        /// current time (absolute time in nanoseconds since epoch)
+        /// The current time according to the device
+        ///
+        /// Note that this is most likely inaccurate.
+        ///
+        /// (absolute time in nanoseconds since epoch)
         time: u64,
-        /// time since last power on (relative time in nanoseconds)
+        /// The amount of time in nanoseconds the device has been online since last power on
         uptime: u64,
-        /// last power off period (5 second accuracy, in nanoseconds)
+        /// The amount of time in nanseconds of power off time accurate to 5 seconds.
         downtime: u64,
     },
 
@@ -606,8 +765,9 @@ pub enum Message {
     /// Message type 45
     Acknowledgement { seq: u8 },
 
-    /// Ask the bulb to return its location information. No payload is required. Causes the device
-    /// to transmit a [Message::StateLocation] message.
+    /// Ask the bulb to return its location information
+    ///
+    /// Causes the device to transmit a [Message::StateLocation] message.
     ///
     /// Message type 48
     GetLocation,
@@ -618,9 +778,9 @@ pub enum Message {
     SetLocation {
         /// GUID byte array
         location: LifxIdent,
-        /// text label for location
+        /// The name assigned to this location
         label: LifxString,
-        /// UTC timestamp of last label update in nanoseconds
+        /// An epoch in nanoseconds of when this location was set on the device
         updated_at: u64,
     },
 
@@ -633,8 +793,8 @@ pub enum Message {
         updated_at: u64,
     },
 
-    /// Ask the bulb to return its group membership information.
-    /// No payload is required.
+    /// Ask the bulb to return its group membership information
+    ///
     /// Causes the device to transmit a [Message::StateGroup] message.
     ///
     /// Message type 51
@@ -653,13 +813,17 @@ pub enum Message {
     ///
     /// Message type 53
     StateGroup {
+        /// The unique identifier of this group as a `uuid`.
         group: LifxIdent,
+        /// The name assigned to this group
         label: LifxString,
+        /// An epoch in nanoseconds of when this group was set on the device
         updated_at: u64,
     },
 
-    /// Request an arbitrary payload be echoed back. Causes the device to transmit an [Message::EchoResponse]
-    /// message.
+    /// Request an arbitrary payload be echoed back
+    ///
+    /// Causes the device to transmit an [Message::EchoResponse] message.
     ///
     /// Message type 58
     EchoRequest { payload: EchoPayload },
@@ -671,10 +835,11 @@ pub enum Message {
     /// Message type 59
     EchoResponse { payload: EchoPayload },
 
-    /// Sent by a client to obtain the light state. No payload required. Causes the device to
-    /// transmit a [Message::LightState] message.
+    /// Sent by a client to obtain the light state.
     ///
-    /// Message type 101
+    /// Causes the device to transmit a [Message::LightState] message.
+    ///
+    /// Note: this message is also known as `GetColor` in the LIFX docs.  Message type 101
     LightGet,
 
     /// Sent by a client to change the light state.
@@ -710,17 +875,22 @@ pub enum Message {
 
     /// Sent by a device to provide the current light state.
     ///
+    /// This message is sent in reply to [Message::LightGet], [Message::LightSetColor], [Message::SetWaveform], and [Message::SetWaveformOptional]
+    ///
     /// Message type 107
     LightState {
         color: HSBK,
         reserved: i16,
-        power: PowerLevel,
+        /// The current power level of the device
+        power: u16,
+        /// The current label on the device
         label: LifxString,
         reserved2: u64,
     },
 
-    /// Sent by a client to obtain the power level. No payload required. Causes the device to
-    /// transmit a StatePower message.
+    /// Sent by a client to obtain the power level
+    ///
+    /// Causes the device to transmit a [Message::LightStatePower] message.
     ///
     /// Message type 116
     LightGetPower,
@@ -775,6 +945,58 @@ pub enum Message {
     /// Message type 122
     LightSetInfrared { brightness: u16 },
 
+    /// Get the state of the HEV LEDs on the device
+    ///
+    /// Causes the device to transmite a [Messages::LightStateHevCycle] message.
+    ///
+    /// This message requires the device has the `hev` capability
+    ///
+    /// Message type 142
+    LightGetHevCycle,
+
+    /// Message type 143
+    LightSetHevCycle {
+        /// Set this to false to turn off the cycle and true to start the cycle
+        enable: bool,
+        /// The duration, in seconds that the cycle should last for
+        ///
+        /// A value of 0 will use the default duration set by SetHevCycleConfiguration (146).
+        duration: u32,
+    },
+
+    /// Whether a HEV cycle is running on the device
+    ///
+    /// Message type 144
+    LightStateHevCycle {
+        /// The duration, in seconds, this cycle was set to
+        duration: u32,
+        /// The duration, in seconds, remaining in this cycle
+        remaining: u32,
+        /// The power state before the HEV cycle started, which will be the power state once the cycle completes.
+        ///
+        /// This is only relevant if `remaining` is larger than 0.
+        last_power: bool,
+    },
+
+    /// Getthe default configuration for using the HEV LEDs on the device
+    ///
+    /// This message requires the device has the `hev` capability
+    ///
+    /// Message type 145
+    LightGetHevCycleConfiguration,
+
+    /// Message type 146
+    LightSetHevCycleConfiguration { indication: bool, duration: u32 },
+
+    /// Message type 147
+    LightStateHevCycleConfiguration { indication: bool, duration: u32 },
+
+    /// Message type 148
+    LightGetLastHevCycleResult,
+
+    /// Message type 149
+    LightStateLastHevCycleResult { result: LastHevCycleResult },
+
     /// This message is used for changing the color of either a single or multiple zones.
     /// The changes are stored in a buffer and are only applied once a message with either
     /// [ApplicationRequest::Apply] or [ApplicationRequest::ApplyOnly] set.
@@ -788,7 +1010,9 @@ pub enum Message {
         apply: ApplicationRequest,
     },
 
-    /// GetColorZones is used to request the zone colors for a range of zones. The bulb will respond
+    /// GetColorZones is used to request the zone colors for a range of zones.
+    ///
+    /// The bulb will respond
     /// with either [Message::StateZone] or [Message::StateMultiZone] messages as required to cover
     /// the requested range. The bulb may send state messages that cover more than the requested
     /// zones. Any zones outside the requested indexes will still contain valid values at the time
@@ -822,6 +1046,70 @@ pub enum Message {
         color5: HSBK,
         color6: HSBK,
         color7: HSBK,
+    },
+
+    /// Message type 507
+    GetMultiZoneEffect,
+
+    /// Message type 509
+    StateMultiZoneEffect {
+        /// The unique value identifying this effect
+        instance_id: u32,
+        typ: MultiZoneEffectType,
+        reserved: u16,
+        /// The time it takes for one cycle of the effect in milliseconds
+        speed: u32,
+        /// The amount of time left in the current effect in nanoseconds
+        duration: u64,
+        reserved7: u32,
+        reserved8: u32,
+        /// The parameters that was used in the request.
+        parameters: [u8; 32],
+    },
+
+    /// Message type 511
+    GetExtendedColorZone,
+
+    /// Message type 512
+    StateExtendedColorZones {
+        zones_count: u16,
+        zone_index: u16,
+        colors_count: u8,
+        colors: [HSBK; 82],
+    },
+
+    /// Get the power state of a relay
+    ///
+    /// This requires the device has the `relays` capability.
+    ///
+    /// Message type 816
+    RelayGetPower {
+        /// The relay on the switch starting from 0
+        relay_index: u8,
+    },
+
+    /// Message ty 817
+    RelaySetPower {
+        /// The relay on the switch starting from 0
+        relay_index: u8,
+        /// The value of the relay
+        ///
+        /// Current models of the LIFX switch do not have dimming capability, so the two valid values are `0`
+        /// for off and `65535` for on.
+        level: u16,
+    },
+
+    /// The state of the device relay
+    ///
+    /// Message type 818
+    RelayStatePower {
+        /// The relay on the switch starting from 0
+        relay_index: u8,
+        /// The value of the relay
+        ///
+        /// Current models of the LIFX switch do not have dimming capability, so the two valid values are `0`
+        /// for off and `65535` for on.
+        level: u16,
     },
 }
 
@@ -871,10 +1159,25 @@ impl Message {
             Message::LightGetInfrared => 120,
             Message::LightStateInfrared { .. } => 121,
             Message::LightSetInfrared { .. } => 122,
+            Message::LightGetHevCycle => 142,
+            Message::LightSetHevCycle { .. } => 143,
+            Message::LightStateHevCycle { .. } => 144,
+            Message::LightGetHevCycleConfiguration => 145,
+            Message::LightSetHevCycleConfiguration { .. } => 146,
+            Message::LightStateHevCycleConfiguration { .. } => 147,
+            Message::LightGetLastHevCycleResult => 148,
+            Message::LightStateLastHevCycleResult { .. } => 149,
             Message::SetColorZones { .. } => 501,
             Message::GetColorZones { .. } => 502,
             Message::StateZone { .. } => 503,
             Message::StateMultiZone { .. } => 506,
+            Message::GetMultiZoneEffect => 507,
+            Message::StateMultiZoneEffect { .. } => 509,
+            Message::GetExtendedColorZone => 511,
+            Message::StateExtendedColorZones { .. } => 512,
+            Message::RelayGetPower { .. } => 816,
+            Message::RelaySetPower { .. } => 817,
+            Message::RelayStatePower { .. } => 818,
         }
     }
 
@@ -898,15 +1201,16 @@ impl Message {
                 StateHostFirmware,
                 build: u64,
                 reserved: u64,
-                version: u32
+                version_minor: u16,
+                version_major: u16
             )),
             16 => Ok(Message::GetWifiInfo),
             17 => Ok(unpack!(
                 msg,
                 StateWifiInfo,
                 signal: f32,
-                tx: u32,
-                rx: u32,
+                reserved6: u32,
+                reserved7: u32,
                 reserved: i16
             )),
             18 => Ok(Message::GetWifiFirmware),
@@ -915,7 +1219,8 @@ impl Message {
                 StateWifiFirmware,
                 build: u64,
                 reserved: u64,
-                version: u32
+                version_minor: u16,
+                version_major: u16
             )),
             20 => Ok(Message::GetPower),
             22 => Ok(unpack!(msg, StatePower, level: u16)),
@@ -927,7 +1232,7 @@ impl Message {
                 StateVersion,
                 vendor: u32,
                 product: u32,
-                version: u32
+                reserved: u32
             )),
             35 => Ok(unpack!(
                 msg,
@@ -982,6 +1287,28 @@ impl Message {
                     level: c.read_val()?,
                 })
             }
+            120 => Ok(Message::LightGetInfrared),
+            142 => Ok(Message::LightGetHevCycle),
+            144 => Ok(unpack!(
+                msg,
+                LightStateHevCycle,
+                duration: u32,
+                remaining: u32,
+                last_power: bool
+            )),
+            145 => Ok(Message::LightGetHevCycleConfiguration),
+            147 => Ok(unpack!(
+                msg,
+                LightStateHevCycleConfiguration,
+                indication: bool,
+                duration: u32
+            )),
+            148 => Ok(Message::LightGetLastHevCycleResult),
+            149 => Ok(unpack!(
+                msg,
+                LightStateLastHevCycleResult,
+                result: LastHevCycleResult
+            )),
             121 => Ok(unpack!(msg, LightStateInfrared, brightness: u16)),
             501 => Ok(unpack!(
                 msg,
@@ -1008,6 +1335,31 @@ impl Message {
                 color6: HSBK,
                 color7: HSBK
             )),
+            507 => Ok(Message::GetMultiZoneEffect),
+            509 => Ok(unpack!(
+                msg,
+                StateMultiZoneEffect,
+                instance_id: u32,
+                typ: MultiZoneEffectType,
+                reserved: u16,
+                speed: u32,
+                duration: u64,
+                reserved7: u32,
+                reserved8: u32,
+                parameters: [u8; 32]
+            )),
+            511 => Ok(Message::GetExtendedColorZone),
+            512 => Ok(unpack!(
+                msg,
+                StateExtendedColorZones,
+                zones_count: u16,
+                zone_index: u16,
+                colors_count: u8,
+                colors: [HSBK; 82]
+            )),
+            816 => Ok(unpack!(msg, RelayGetPower, relay_index: u8)),
+            817 => Ok(unpack!(msg, RelaySetPower, relay_index: u8, level: u16)),
+            818 => Ok(unpack!(msg, RelayStatePower, relay_index: u8, level: u16)),
             _ => Err(Error::UnknownMessageType(msg.protocol_header.typ)),
         }
     }
@@ -1430,7 +1782,12 @@ impl RawMessage {
             | Message::GetGroup
             | Message::LightGet
             | Message::LightGetPower
-            | Message::LightGetInfrared => {
+            | Message::LightGetInfrared
+            | Message::LightGetHevCycle
+            | Message::LightGetHevCycleConfiguration
+            | Message::LightGetLastHevCycleResult
+            | Message::GetMultiZoneEffect
+            | Message::GetExtendedColorZone => {
                 // these types have no payload
             }
             Message::SetColorZones {
@@ -1565,31 +1922,35 @@ impl RawMessage {
             Message::StateHostFirmware {
                 build,
                 reserved,
-                version,
+                version_minor,
+                version_major,
             } => {
                 v.write_val(build)?;
                 v.write_val(reserved)?;
-                v.write_val(version)?;
+                v.write_val(version_minor)?;
+                v.write_val(version_major)?;
             }
             Message::StateWifiInfo {
                 signal,
-                tx,
-                rx,
+                reserved6,
+                reserved7,
                 reserved,
             } => {
                 v.write_val(signal)?;
-                v.write_val(tx)?;
-                v.write_val(rx)?;
+                v.write_val(reserved6)?;
+                v.write_val(reserved7)?;
                 v.write_val(reserved)?;
             }
             Message::StateWifiFirmware {
                 build,
                 reserved,
-                version,
+                version_minor,
+                version_major,
             } => {
                 v.write_val(build)?;
                 v.write_val(reserved)?;
-                v.write_val(version)?;
+                v.write_val(version_minor)?;
+                v.write_val(version_major)?;
             }
             Message::SetPower { level } => {
                 v.write_val(level)?;
@@ -1606,11 +1967,11 @@ impl RawMessage {
             Message::StateVersion {
                 vendor,
                 product,
-                version,
+                reserved,
             } => {
                 v.write_val(vendor)?;
                 v.write_val(product)?;
-                v.write_val(version)?;
+                v.write_val(reserved)?;
             }
             Message::StateInfo {
                 time,
@@ -1673,6 +2034,77 @@ impl RawMessage {
             }
             Message::LightStatePower { level } => {
                 v.write_val(level)?;
+            }
+            Message::LightStateHevCycle {
+                duration,
+                remaining,
+                last_power,
+            } => {
+                v.write_val(duration)?;
+                v.write_val(remaining)?;
+                v.write_val(last_power)?;
+            }
+            Message::LightStateHevCycleConfiguration {
+                indication,
+                duration,
+            } => {
+                v.write_val(indication)?;
+                v.write_val(duration)?;
+            }
+            Message::LightStateLastHevCycleResult { result } => {
+                v.write_val(result)?;
+            }
+            Message::StateMultiZoneEffect {
+                instance_id,
+                typ,
+                reserved,
+                speed,
+                duration,
+                reserved7,
+                reserved8,
+                parameters,
+            } => {
+                v.write_val(instance_id)?;
+                v.write_val(typ)?;
+                v.write_val(reserved)?;
+                v.write_val(speed)?;
+                v.write_val(duration)?;
+                v.write_val(reserved7)?;
+                v.write_val(reserved8)?;
+                v.write_val(&parameters)?;
+            }
+            Message::StateExtendedColorZones {
+                zones_count,
+                zone_index,
+                colors_count,
+                colors,
+            } => {
+                v.write_val(zones_count)?;
+                v.write_val(zone_index)?;
+                v.write_val(colors_count)?;
+                v.write_val(&colors)?;
+            }
+            Message::RelayGetPower { relay_index } => {
+                v.write_val(relay_index)?;
+            }
+            Message::RelayStatePower { relay_index, level } => {
+                v.write_val(relay_index)?;
+                v.write_val(level)?;
+            }
+            Message::RelaySetPower { relay_index, level } => {
+                v.write_val(relay_index)?;
+                v.write_val(level)?;
+            }
+            Message::LightSetHevCycle { enable, duration } => {
+                v.write_val(enable)?;
+                v.write_val(duration)?;
+            }
+            Message::LightSetHevCycleConfiguration {
+                indication,
+                duration,
+            } => {
+                v.write_val(indication)?;
+                v.write_val(duration)?;
             }
         }
 

@@ -27,10 +27,13 @@ Supported LIFX products:
 
 - [x] Light bulbs
 - [x] Multizone devices (LIFX Z and Beam)
+- [x] Relay devices (LIFX Switch)
 - [ ] Tile devices
 
-
-
+> **Note:** While this library has support for several different
+LIFX products, some of them are not tested.  Feedback in the form
+of a github issue would be appreciated, if you find that type of
+device isn't working correctly.
 
 
 Higher level library
