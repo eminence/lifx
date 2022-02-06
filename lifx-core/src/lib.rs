@@ -341,12 +341,12 @@ where
     }
 }
 
-impl<T> LittleEndianWriter<&[HSBK; 82]> for T
+impl<T> LittleEndianWriter<&Box<[HSBK; 82]>> for T
 where
     T: WriteBytesExt,
 {
-    fn write_val(&mut self, v: &[HSBK; 82]) -> Result<(), io::Error> {
-        for elem in v {
+    fn write_val(&mut self, v: &Box<[HSBK; 82]>) -> Result<(), io::Error> {
+        for elem in &**v {
             self.write_val(*elem)?;
         }
         Ok(())
@@ -1188,7 +1188,7 @@ pub enum Message {
         zones_count: u16,
         zone_index: u16,
         colors_count: u8,
-        colors: [HSBK; 82],
+        colors: Box<[HSBK; 82]>,
     },
 
     /// Get the power state of a relay
