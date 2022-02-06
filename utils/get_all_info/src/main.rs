@@ -46,9 +46,9 @@ struct BulbInfo {
     name: RefreshableData<CString>,
     model: RefreshableData<(u32, u32)>,
     location: RefreshableData<CString>,
-    host_firmware: RefreshableData<u32>,
-    wifi_firmware: RefreshableData<u32>,
-    power_level: RefreshableData<PowerLevel>,
+    host_firmware: RefreshableData<(u16, u16)>,
+    wifi_firmware: RefreshableData<(u16, u16)>,
+    power_level: RefreshableData<u16>,
     color: Color,
 }
 
@@ -137,14 +137,14 @@ impl std::fmt::Debug for BulbInfo {
                 )?;
             }
         }
-        if let Some(fw_version) = self.host_firmware.as_ref() {
-            write!(f, " McuFW:{:x}", fw_version)?;
+        if let Some((major, minor)) = self.host_firmware.as_ref() {
+            write!(f, " McuFW:{}.{}", major, minor)?;
         }
-        if let Some(fw_version) = self.wifi_firmware.as_ref() {
-            write!(f, " WifiFW:{:x}", fw_version)?;
+        if let Some((major, minor)) = self.wifi_firmware.as_ref() {
+            write!(f, " WifiFW:{}.{}", major, minor)?;
         }
         if let Some(level) = self.power_level.as_ref() {
-            if *level == PowerLevel::Enabled {
+            if *level > 0 {
                 write!(f, "  Powered On(")?;
                 match self.color {
                     Color::Unknown => write!(f, "??")?,
@@ -241,8 +241,16 @@ impl Manager {
                 }
             }
             Message::StatePower { level } => bulb.power_level.update(level),
-            Message::StateHostFirmware { version, .. } => bulb.host_firmware.update(version),
-            Message::StateWifiFirmware { version, .. } => bulb.wifi_firmware.update(version),
+            Message::StateHostFirmware {
+                version_minor,
+                version_major,
+                ..
+            } => bulb.host_firmware.update((version_major, version_minor)),
+            Message::StateWifiFirmware {
+                version_minor,
+                version_major,
+                ..
+            } => bulb.wifi_firmware.update((version_major, version_minor)),
             Message::LightState {
                 color,
                 power,

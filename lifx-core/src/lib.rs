@@ -496,6 +496,31 @@ impl<R: ReadBytesExt> LittleEndianReader<EchoPayload> for R {
     }
 }
 
+impl<R: ReadBytesExt> LittleEndianReader<PowerLevel> for R {
+    fn read_val(&mut self) -> Result<PowerLevel, io::Error> {
+        let val: u16 = self.read_val()?;
+        if val == 0 {
+            Ok(PowerLevel::Standby)
+        } else {
+            Ok(PowerLevel::Enabled)
+        }
+    }
+}
+
+impl<R: ReadBytesExt> LittleEndianReader<Waveform> for R {
+    fn read_val(&mut self) -> Result<Waveform, io::Error> {
+        let v = self.read_u8()?;
+        match v {
+            0 => Ok(Waveform::Saw),
+            1 => Ok(Waveform::Sine),
+            2 => Ok(Waveform::HalfSign),
+            3 => Ok(Waveform::Triangle),
+            4 => Ok(Waveform::Pulse),
+            _ => Ok(Waveform::Saw), // default
+        }
+    }
+}
+
 macro_rules! unpack {
     ($msg:ident, $typ:ident, $( $n:ident: $t:ty ),*) => {
         {
@@ -1312,8 +1337,10 @@ impl Message {
                 version_major: u16
             )),
             20 => Ok(Message::GetPower),
+            21 => Ok(unpack!(msg, SetPower, level: PowerLevel)),
             22 => Ok(unpack!(msg, StatePower, level: u16)),
             23 => Ok(Message::GetLabel),
+            24 => Ok(unpack!(msg, SetLabel, label: LifxString)),
             25 => Ok(unpack!(msg, StateLabel, label: LifxString)),
             32 => Ok(Message::GetVersion),
             33 => Ok(unpack!(
@@ -1323,6 +1350,7 @@ impl Message {
                 product: u32,
                 reserved: u32
             )),
+            34 => Ok(Message::GetInfo),
             35 => Ok(unpack!(
                 msg,
                 StateInfo,
@@ -1334,6 +1362,13 @@ impl Message {
                 seq: msg.frame_addr.sequence,
             }),
             48 => Ok(Message::GetLocation),
+            49 => Ok(unpack!(
+                msg,
+                SetLocation,
+                location: LifxIdent,
+                label: LifxString,
+                updated_at: u64
+            )),
             50 => Ok(unpack!(
                 msg,
                 StateLocation,
@@ -1342,6 +1377,13 @@ impl Message {
                 updated_at: u64
             )),
             51 => Ok(Message::GetGroup),
+            52 => Ok(unpack!(
+                msg,
+                SetGroup,
+                group: LifxIdent,
+                label: LifxString,
+                updated_at: u64
+            )),
             53 => Ok(unpack!(
                 msg,
                 StateGroup,
@@ -1358,6 +1400,17 @@ impl Message {
                 reserved: u8,
                 color: HSBK,
                 duration: u32
+            )),
+            103 => Ok(unpack!(
+                msg,
+                SetWaveform,
+                reserved: u8,
+                transient: bool,
+                color: HSBK,
+                period: u32,
+                cycles: f32,
+                skew_ratio: i16,
+                waveform: Waveform
             )),
             107 => Ok(unpack!(
                 msg,
@@ -1376,8 +1429,25 @@ impl Message {
                     level: c.read_val()?,
                 })
             }
+            119 => Ok(unpack!(
+                msg,
+                SetWaveformOptional,
+                reserved: u8,
+                transient: bool,
+                color: HSBK,
+                period: u32,
+                cycles: f32,
+                skew_ratio: i16,
+                waveform: Waveform,
+                set_hue: bool,
+                set_saturation: bool,
+                set_brightness: bool,
+                set_kelvin: bool
+            )),
             120 => Ok(Message::LightGetInfrared),
+            122 => Ok(unpack!(msg, LightSetInfrared, brightness: u16)),
             142 => Ok(Message::LightGetHevCycle),
+            143 => Ok(unpack!(msg, LightSetHevCycle, enable: bool, duration: u32)),
             144 => Ok(unpack!(
                 msg,
                 LightStateHevCycle,
@@ -1386,6 +1456,12 @@ impl Message {
                 last_power: bool
             )),
             145 => Ok(Message::LightGetHevCycleConfiguration),
+            146 => Ok(unpack!(
+                msg,
+                LightSetHevCycleConfiguration,
+                indication: bool,
+                duration: u32
+            )),
             147 => Ok(unpack!(
                 msg,
                 LightStateHevCycleConfiguration,
