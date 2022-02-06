@@ -630,11 +630,11 @@ pub enum Message {
     ///
     /// Message type 3
     StateService {
+        /// unsigned 8-bit integer, maps to `Service`
+        service: Service,
         /// Port number of the light.  If the service is temporarily unavailable, then the port value
         /// will be 0.
         port: u32,
-        /// unsigned 8-bit integer, maps to `Service`
-        service: Service,
     },
 
     /// Get Host MCU information. No payload is required. Causes the device to transmit a
@@ -1995,8 +1995,8 @@ impl RawMessage {
                 v.write_val(updated_at)?;
             }
             Message::StateService { port, service } => {
-                v.write_val(port)?;
                 v.write_val(service as u8)?;
+                v.write_val(port)?;
             }
             Message::StateHostInfo {
                 signal,
