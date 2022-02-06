@@ -1,6 +1,7 @@
 use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
 use lifx_core::{get_product_info, BuildOptions, Message, PowerLevel, RawMessage, Service, HSBK};
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
@@ -42,9 +43,9 @@ struct BulbInfo {
     source: u32,
     target: u64,
     addr: SocketAddr,
-    name: RefreshableData<String>,
+    name: RefreshableData<CString>,
     model: RefreshableData<(u32, u32)>,
-    location: RefreshableData<String>,
+    location: RefreshableData<CString>,
     host_firmware: RefreshableData<u32>,
     wifi_firmware: RefreshableData<u32>,
     power_level: RefreshableData<PowerLevel>,
@@ -120,10 +121,10 @@ impl std::fmt::Debug for BulbInfo {
         write!(f, "BulbInfo({:0>16X} - {}  ", self.target, self.addr)?;
 
         if let Some(name) = self.name.as_ref() {
-            write!(f, "{}", name)?;
+            write!(f, "{}", name.to_string_lossy())?;
         }
         if let Some(location) = self.location.as_ref() {
-            write!(f, "/{}", location)?;
+            write!(f, "/{}", location.to_string_lossy())?;
         }
         if let Some((vendor, product)) = self.model.as_ref() {
             if let Some(info) = get_product_info(*vendor, *product) {
@@ -216,8 +217,8 @@ impl Manager {
                     println!("Unsupported service: {:?}/{}", service, port);
                 }
             }
-            Message::StateLabel { label } => bulb.name.update(label.0),
-            Message::StateLocation { label, .. } => bulb.location.update(label.0),
+            Message::StateLabel { label } => bulb.name.update(label.cstr().to_owned()),
+            Message::StateLocation { label, .. } => bulb.location.update(label.cstr().to_owned()),
             Message::StateVersion {
                 vendor, product, ..
             } => {
@@ -252,7 +253,7 @@ impl Manager {
                     d.update(color);
                     bulb.power_level.update(power);
                 }
-                bulb.name.update(label.0);
+                bulb.name.update(label.cstr().to_owned());
             }
             Message::StateZone {
                 count,

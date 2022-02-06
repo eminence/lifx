@@ -25,8 +25,10 @@
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::convert::{TryFrom, TryInto};
+use std::ffi::{CStr, CString};
 use std::io;
 use std::io::Cursor;
+use std::num::NonZeroU8;
 use thiserror::Error;
 
 /// Various message encoding/decoding errors
@@ -130,28 +132,40 @@ pub struct LifxIdent(pub [u8; 16]);
 /// Lifx strings are fixed-length (32-bytes maximum)
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct LifxString(pub String);
+pub struct LifxString(CString);
 
 impl LifxString {
-    /// Constructs a new LifxString, truncating to 32 characters.
-    pub fn new(s: &str) -> LifxString {
-        LifxString(if s.len() > 32 {
-            s[..32].to_owned()
+    /// Constructs a new LifxString, truncating to 32 characters and ensuring there's a null terminator
+    pub fn new(s: &CStr) -> LifxString {
+        let mut b = s.to_bytes().to_vec();
+        if b.len() > 31 {
+            b[31] = 0;
+            let b = b[..32].to_vec();
+            LifxString(unsafe {
+                // Saftey: we created the null terminator above, and the rest of the bytes originally came from a CStr
+                CString::from_vec_with_nul_unchecked(b)
+            })
         } else {
-            s.to_owned()
-        })
+            LifxString(s.to_owned())
+        }
+    }
+    pub fn cstr(&self) -> &CStr {
+        &self.0
     }
 }
 
 impl std::fmt::Display for LifxString {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        write!(fmt, "{}", self.0)
+        write!(fmt, "{}", self.0.to_string_lossy())
     }
 }
 
 impl std::cmp::PartialEq<str> for LifxString {
     fn eq(&self, other: &str) -> bool {
-        self.0 == other
+        self.0.to_string_lossy() == other
+    }
+}
+
     }
 }
 
@@ -191,11 +205,12 @@ where
     T: WriteBytesExt,
 {
     fn write_val(&mut self, v: LifxString) -> Result<(), io::Error> {
+        let b = v.0.to_bytes();
         for idx in 0..32 {
-            if idx >= v.0.len() {
+            if idx >= b.len() {
                 self.write_u8(0)?;
             } else {
-                self.write_u8(v.0.chars().nth(idx).unwrap() as u8)?;
+                self.write_u8(b[idx])?;
             }
         }
         Ok(())
@@ -414,14 +429,17 @@ impl<R: ReadBytesExt> LittleEndianReader<LifxIdent> for R {
 
 impl<R: ReadBytesExt> LittleEndianReader<LifxString> for R {
     fn read_val(&mut self) -> Result<LifxString, io::Error> {
-        let mut label = String::with_capacity(32);
-        for _ in 0..32 {
+        let mut bytes = Vec::new();
+        for _ in 0..31 {
             let c: u8 = self.read_val()?;
-            if c > 0 {
-                label.push(c as char);
+            if let Some(b) = std::num::NonZeroU8::new(c) {
+                bytes.push(b);
             }
         }
-        Ok(LifxString(label))
+        // read the null terminator
+        self.read_u8()?;
+
+        Ok(LifxString(CString::from(bytes)))
     }
 }
 
@@ -2537,6 +2555,22 @@ mod tests {
                 0x00, 0x00, 0x00, 0x00, 0x66, 0x00, 0x00, 0x00, 0x00, 0x55, 0x55, 0xFF, 0xFF, 0xFF,
                 0xFF, 0xAC, 0x0D, 0x00, 0x04, 0x00, 0x00
             ]
+        );
+    }
+
+    #[test]
+    fn test_lifx_string() {
+        let s = CStr::from_bytes_with_nul(b"hello\0").unwrap();
+        let ls = LifxString::new(s);
+        assert_eq!(ls.cstr(), s);
+        assert!(ls.cstr().to_bytes_with_nul().len() <= 32);
+
+        let s = CStr::from_bytes_with_nul(b"this is bigger than thirty two characters\0").unwrap();
+        let ls = LifxString::new(s);
+        assert_eq!(ls.cstr().to_bytes_with_nul().len(), 32);
+        assert_eq!(
+            ls.cstr(),
+            CStr::from_bytes_with_nul(b"this is bigger than thirty two \0").unwrap()
         );
     }
 }
