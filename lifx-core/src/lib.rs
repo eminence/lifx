@@ -29,7 +29,6 @@ use std::convert::{TryFrom, TryInto};
 use std::ffi::{CStr, CString};
 use std::io;
 use std::io::Cursor;
-use std::num::NonZeroU8;
 use thiserror::Error;
 
 #[cfg(fuzzing)]
@@ -195,7 +194,7 @@ impl<'a> arbitrary::Arbitrary<'a> for LifxString {
 
         let mut v = Vec::new();
         for _ in 0..len {
-            let b: NonZeroU8 = u.arbitrary()?;
+            let b: std::num::NonZeroU8 = u.arbitrary()?;
             v.push(b);
         }
 
@@ -1717,7 +1716,7 @@ impl Frame {
 
     fn validate(&self) {
         assert!(self.origin < 4);
-        assert_eq!(self.addressable, true);
+        assert!(self.addressable);
         assert_eq!(self.protocol, 1024);
     }
     fn pack(&self) -> Result<Vec<u8>, Error> {
@@ -1861,7 +1860,7 @@ impl ProtocolHeader {
 /// Options used to contruct a [RawMessage].
 ///
 /// See also [RawMessage::build].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BuildOptions {
     /// If not `None`, this is the ID of the device you want to address.
     ///
@@ -1891,17 +1890,6 @@ pub struct BuildOptions {
     pub source: u32,
 }
 
-impl std::default::Default for BuildOptions {
-    fn default() -> BuildOptions {
-        BuildOptions {
-            target: None,
-            ack_required: false,
-            res_required: false,
-            sequence: 0,
-            source: 0,
-        }
-    }
-}
 
 impl RawMessage {
     /// Build a RawMessage (which is suitable for sending on the network) from a given Message

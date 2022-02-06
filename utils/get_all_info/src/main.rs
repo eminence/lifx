@@ -1,5 +1,5 @@
 use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
-use lifx_core::{get_product_info, BuildOptions, Message, PowerLevel, RawMessage, Service, HSBK};
+use lifx_core::{get_product_info, BuildOptions, Message, RawMessage, Service, HSBK};
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
@@ -297,7 +297,7 @@ impl Manager {
                         v
                     });
 
-                    v[index as usize + 0] = Some(color0);
+                    v[index as usize] = Some(color0);
                     v[index as usize + 1] = Some(color1);
                     v[index as usize + 2] = Some(color2);
                     v[index as usize + 3] = Some(color3);
@@ -358,19 +358,16 @@ impl Manager {
         let bytes = rawmsg.pack().unwrap();
 
         for addr in get_if_addrs().unwrap() {
-            match addr.addr {
-                IfAddr::V4(Ifv4Addr {
-                    broadcast: Some(bcast),
-                    ..
-                }) => {
-                    if addr.ip().is_loopback() {
-                        continue;
-                    }
-                    let addr = SocketAddr::new(IpAddr::V4(bcast), 56700);
-                    println!("Discovering bulbs on LAN {:?}", addr);
-                    self.sock.send_to(&bytes, &addr)?;
+            if let IfAddr::V4(Ifv4Addr {
+                                broadcast: Some(bcast),
+                                ..
+                            }) = addr.addr {
+                if addr.ip().is_loopback() {
+                    continue;
                 }
-                _ => {}
+                let addr = SocketAddr::new(IpAddr::V4(bcast), 56700);
+                println!("Discovering bulbs on LAN {:?}", addr);
+                self.sock.send_to(&bytes, &addr)?;
             }
         }
 
