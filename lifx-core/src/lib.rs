@@ -24,12 +24,34 @@
 //! suspected to be internal messages that are used by offical LIFX apps, but that aren't documented.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use std::cmp::PartialEq;
 use std::convert::{TryFrom, TryInto};
 use std::ffi::{CStr, CString};
 use std::io;
 use std::io::Cursor;
 use std::num::NonZeroU8;
 use thiserror::Error;
+
+#[cfg(fuzzing)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Debug, Clone)]
+pub struct ComparableFloat(f32);
+#[cfg(fuzzing)]
+impl PartialEq for ComparableFloat {
+    fn eq(&self, other: &Self) -> bool {
+        if self.0.is_nan() && other.0.is_nan() {
+            true
+        } else {
+            self.0 == other.0
+        }
+    }
+}
+#[cfg(fuzzing)]
+impl From<f32> for ComparableFloat {
+    fn from(f: f32) -> Self {
+        ComparableFloat(f)
+    }
+}
 
 /// Various message encoding/decoding errors
 #[derive(Error, Debug)]
@@ -131,7 +153,6 @@ pub struct LifxIdent(pub [u8; 16]);
 
 /// Lifx strings are fixed-length (32-bytes maximum)
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct LifxString(CString);
 
 impl LifxString {
@@ -166,6 +187,21 @@ impl std::cmp::PartialEq<str> for LifxString {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for LifxString {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        // first pick a random length, between 0 and 32
+        let len: usize = u.int_in_range(0..=31)?;
+
+        let mut v = Vec::new();
+        for _ in 0..len {
+            let b: NonZeroU8 = u.arbitrary()?;
+            v.push(b);
+        }
+
+        let s = CString::from(v);
+        assert!(s.to_bytes_with_nul().len() <= 32);
+        Ok(LifxString(s))
     }
 }
 
@@ -187,6 +223,13 @@ macro_rules! derive_writer {
 }
 
 derive_writer! { write_u32: u32, write_u16: u16, write_i16: i16, write_u64: u64, write_f32: f32 }
+
+#[cfg(fuzzing)]
+impl<T: WriteBytesExt> LittleEndianWriter<ComparableFloat> for T {
+    fn write_val(&mut self, v: ComparableFloat) -> Result<(), io::Error> {
+        self.write_f32::<LittleEndian>(v.0)
+    }
+}
 
 impl<T: WriteBytesExt> LittleEndianWriter<u8> for T {
     fn write_val(&mut self, v: u8) -> Result<(), io::Error> {
@@ -607,7 +650,10 @@ pub enum Message {
     /// Message type 13
     StateHostInfo {
         /// radio receive signal strength in miliWatts
+        #[cfg(not(fuzzing))]
         signal: f32,
+        #[cfg(fuzzing)]
+        signal: ComparableFloat,
         /// Bytes transmitted since power on
         tx: u32,
         /// Bytes received since power on
@@ -655,7 +701,10 @@ pub enum Message {
         ///
         /// The units of this field varies between different products.  See this LIFX doc for more info:
         /// <https://lan.developer.lifx.com/docs/information-messages#statewifiinfo---packet-17>
+        #[cfg(not(fuzzing))]
         signal: f32,
+        #[cfg(fuzzing)]
+        signal: ComparableFloat,
         /// Reserved
         ///
         /// This field used to store bytes transmitted since power on
@@ -900,7 +949,10 @@ pub enum Message {
         /// Duration of a cycle in milliseconds
         period: u32,
         /// Number of cycles
+        #[cfg(not(fuzzing))]
         cycles: f32,
+        #[cfg(fuzzing)]
+        cycles: ComparableFloat,
         /// Waveform Skew, [-32768, 32767] scaled to [0, 1].
         skew_ratio: i16,
         /// Waveform to use for transition.
@@ -954,7 +1006,10 @@ pub enum Message {
         /// Duration of a cycle in milliseconds
         period: u32,
         /// Number of cycles
+        #[cfg(not(fuzzing))]
         cycles: f32,
+        #[cfg(fuzzing)]
+        cycles: ComparableFloat,
 
         skew_ratio: i16,
         waveform: Waveform,
