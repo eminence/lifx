@@ -151,7 +151,7 @@ impl std::fmt::Debug for EchoPayload {
 pub struct LifxIdent(pub [u8; 16]);
 
 /// Lifx strings are fixed-length (32-bytes maximum)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifxString(CString);
 
 impl LifxString {
