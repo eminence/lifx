@@ -162,7 +162,7 @@ impl LifxString {
             b[31] = 0;
             let b = b[..32].to_vec();
             LifxString(unsafe {
-                // Saftey: we created the null terminator above, and the rest of the bytes originally came from a CStr
+                // Safety: we created the null terminator above, and the rest of the bytes originally came from a CStr
                 CString::from_vec_with_nul_unchecked(b)
             })
         } else {
