@@ -11,3 +11,4 @@ edition = "2018"
 [dependencies]
 byteorder = "1.2.4"
 thiserror = "1.0"
+arbitrary = { version = "1", optional = true, features = ["derive"] }

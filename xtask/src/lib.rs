@@ -3,15 +3,15 @@ use std::{borrow::Cow, fs::File};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-struct LifxProducts {
+pub struct LifxProducts {
     pub vid: i32,
     pub name: String,
-    products: Vec<LifxProduct>,
-    defaults: LifxFeatures,
+    pub products: Vec<LifxProduct>,
+    pub defaults: LifxFeatures,
 }
 
 #[derive(Deserialize, Debug)]
-struct LifxFeatures {
+pub struct LifxFeatures {
     #[serde(default)]
     hev: bool,
     #[serde(default)]
@@ -33,7 +33,7 @@ struct LifxFeatures {
 }
 
 #[derive(Deserialize, Debug)]
-struct LifxProduct {
+pub struct LifxProduct {
     pub pid: i32,
     pub name: String,
     pub features: LifxFeatures,

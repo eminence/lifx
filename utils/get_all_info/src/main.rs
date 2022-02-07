@@ -1,6 +1,7 @@
 use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
-use lifx_core::{get_product_info, BuildOptions, Message, PowerLevel, RawMessage, Service, HSBK};
+use lifx_core::{get_product_info, BuildOptions, Message, RawMessage, Service, HSBK};
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
@@ -42,12 +43,12 @@ struct BulbInfo {
     source: u32,
     target: u64,
     addr: SocketAddr,
-    name: RefreshableData<String>,
+    name: RefreshableData<CString>,
     model: RefreshableData<(u32, u32)>,
-    location: RefreshableData<String>,
-    host_firmware: RefreshableData<u32>,
-    wifi_firmware: RefreshableData<u32>,
-    power_level: RefreshableData<PowerLevel>,
+    location: RefreshableData<CString>,
+    host_firmware: RefreshableData<(u16, u16)>,
+    wifi_firmware: RefreshableData<(u16, u16)>,
+    power_level: RefreshableData<u16>,
     color: Color,
 }
 
@@ -120,10 +121,10 @@ impl std::fmt::Debug for BulbInfo {
         write!(f, "BulbInfo({:0>16X} - {}  ", self.target, self.addr)?;
 
         if let Some(name) = self.name.as_ref() {
-            write!(f, "{}", name)?;
+            write!(f, "{}", name.to_string_lossy())?;
         }
         if let Some(location) = self.location.as_ref() {
-            write!(f, "/{}", location)?;
+            write!(f, "/{}", location.to_string_lossy())?;
         }
         if let Some((vendor, product)) = self.model.as_ref() {
             if let Some(info) = get_product_info(*vendor, *product) {
@@ -136,14 +137,14 @@ impl std::fmt::Debug for BulbInfo {
                 )?;
             }
         }
-        if let Some(fw_version) = self.host_firmware.as_ref() {
-            write!(f, " McuFW:{:x}", fw_version)?;
+        if let Some((major, minor)) = self.host_firmware.as_ref() {
+            write!(f, " McuFW:{}.{}", major, minor)?;
         }
-        if let Some(fw_version) = self.wifi_firmware.as_ref() {
-            write!(f, " WifiFW:{:x}", fw_version)?;
+        if let Some((major, minor)) = self.wifi_firmware.as_ref() {
+            write!(f, " WifiFW:{}.{}", major, minor)?;
         }
         if let Some(level) = self.power_level.as_ref() {
-            if *level == PowerLevel::Enabled {
+            if *level > 0 {
                 write!(f, "  Powered On(")?;
                 match self.color {
                     Color::Unknown => write!(f, "??")?,
@@ -216,8 +217,8 @@ impl Manager {
                     println!("Unsupported service: {:?}/{}", service, port);
                 }
             }
-            Message::StateLabel { label } => bulb.name.update(label.0),
-            Message::StateLocation { label, .. } => bulb.location.update(label.0),
+            Message::StateLabel { label } => bulb.name.update(label.cstr().to_owned()),
+            Message::StateLocation { label, .. } => bulb.location.update(label.cstr().to_owned()),
             Message::StateVersion {
                 vendor, product, ..
             } => {
@@ -240,8 +241,16 @@ impl Manager {
                 }
             }
             Message::StatePower { level } => bulb.power_level.update(level),
-            Message::StateHostFirmware { version, .. } => bulb.host_firmware.update(version),
-            Message::StateWifiFirmware { version, .. } => bulb.wifi_firmware.update(version),
+            Message::StateHostFirmware {
+                version_minor,
+                version_major,
+                ..
+            } => bulb.host_firmware.update((version_major, version_minor)),
+            Message::StateWifiFirmware {
+                version_minor,
+                version_major,
+                ..
+            } => bulb.wifi_firmware.update((version_major, version_minor)),
             Message::LightState {
                 color,
                 power,
@@ -252,7 +261,7 @@ impl Manager {
                     d.update(color);
                     bulb.power_level.update(power);
                 }
-                bulb.name.update(label.0);
+                bulb.name.update(label.cstr().to_owned());
             }
             Message::StateZone {
                 count,
@@ -288,7 +297,7 @@ impl Manager {
                         v
                     });
 
-                    v[index as usize + 0] = Some(color0);
+                    v[index as usize] = Some(color0);
                     v[index as usize + 1] = Some(color1);
                     v[index as usize + 2] = Some(color2);
                     v[index as usize + 3] = Some(color3);
@@ -349,19 +358,16 @@ impl Manager {
         let bytes = rawmsg.pack().unwrap();
 
         for addr in get_if_addrs().unwrap() {
-            match addr.addr {
-                IfAddr::V4(Ifv4Addr {
-                    broadcast: Some(bcast),
-                    ..
-                }) => {
-                    if addr.ip().is_loopback() {
-                        continue;
-                    }
-                    let addr = SocketAddr::new(IpAddr::V4(bcast), 56700);
-                    println!("Discovering bulbs on LAN {:?}", addr);
-                    self.sock.send_to(&bytes, &addr)?;
+            if let IfAddr::V4(Ifv4Addr {
+                                broadcast: Some(bcast),
+                                ..
+                            }) = addr.addr {
+                if addr.ip().is_loopback() {
+                    continue;
                 }
-                _ => {}
+                let addr = SocketAddr::new(IpAddr::V4(bcast), 56700);
+                println!("Discovering bulbs on LAN {:?}", addr);
+                self.sock.send_to(&bytes, &addr)?;
             }
         }
 

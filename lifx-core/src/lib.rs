@@ -24,10 +24,33 @@
 //! suspected to be internal messages that are used by official LIFX apps, but that aren't documented.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use std::cmp::PartialEq;
 use std::convert::{TryFrom, TryInto};
+use std::ffi::{CStr, CString};
 use std::io;
 use std::io::Cursor;
 use thiserror::Error;
+
+#[cfg(fuzzing)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Debug, Clone)]
+pub struct ComparableFloat(f32);
+#[cfg(fuzzing)]
+impl PartialEq for ComparableFloat {
+    fn eq(&self, other: &Self) -> bool {
+        if self.0.is_nan() && other.0.is_nan() {
+            true
+        } else {
+            self.0 == other.0
+        }
+    }
+}
+#[cfg(fuzzing)]
+impl From<f32> for ComparableFloat {
+    fn from(f: f32) -> Self {
+        ComparableFloat(f)
+    }
+}
 
 /// Various message encoding/decoding errors
 #[derive(Error, Debug)]
@@ -113,6 +136,8 @@ impl TryFrom<u16> for PowerLevel {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub struct EchoPayload(pub [u8; 64]);
 
 impl std::fmt::Debug for EchoPayload {
@@ -121,33 +146,61 @@ impl std::fmt::Debug for EchoPayload {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct LifxIdent(pub [u8; 16]);
 
 /// Lifx strings are fixed-length (32-bytes maximum)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LifxString(pub String);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LifxString(CString);
 
 impl LifxString {
-    /// Constructs a new LifxString, truncating to 32 characters.
-    pub fn new(s: &str) -> LifxString {
-        LifxString(if s.len() > 32 {
-            s[..32].to_owned()
+    /// Constructs a new LifxString, truncating to 32 characters and ensuring there's a null terminator
+    pub fn new(s: &CStr) -> LifxString {
+        let mut b = s.to_bytes().to_vec();
+        if b.len() > 31 {
+            b[31] = 0;
+            let b = b[..32].to_vec();
+            LifxString(unsafe {
+                // Saftey: we created the null terminator above, and the rest of the bytes originally came from a CStr
+                CString::from_vec_with_nul_unchecked(b)
+            })
         } else {
-            s.to_owned()
-        })
+            LifxString(s.to_owned())
+        }
+    }
+    pub fn cstr(&self) -> &CStr {
+        &self.0
     }
 }
 
 impl std::fmt::Display for LifxString {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        write!(fmt, "{}", self.0)
+        write!(fmt, "{}", self.0.to_string_lossy())
     }
 }
 
 impl std::cmp::PartialEq<str> for LifxString {
     fn eq(&self, other: &str) -> bool {
-        self.0 == other
+        self.0.to_string_lossy() == other
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for LifxString {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        // first pick a random length, between 0 and 32
+        let len: usize = u.int_in_range(0..=31)?;
+
+        let mut v = Vec::new();
+        for _ in 0..len {
+            let b: std::num::NonZeroU8 = u.arbitrary()?;
+            v.push(b);
+        }
+
+        let s = CString::from(v);
+        assert!(s.to_bytes_with_nul().len() <= 32);
+        Ok(LifxString(s))
     }
 }
 
@@ -170,6 +223,13 @@ macro_rules! derive_writer {
 
 derive_writer! { write_u32: u32, write_u16: u16, write_i16: i16, write_u64: u64, write_f32: f32 }
 
+#[cfg(fuzzing)]
+impl<T: WriteBytesExt> LittleEndianWriter<ComparableFloat> for T {
+    fn write_val(&mut self, v: ComparableFloat) -> Result<(), io::Error> {
+        self.write_f32::<LittleEndian>(v.0)
+    }
+}
+
 impl<T: WriteBytesExt> LittleEndianWriter<u8> for T {
     fn write_val(&mut self, v: u8) -> Result<(), io::Error> {
         self.write_u8(v)
@@ -187,11 +247,12 @@ where
     T: WriteBytesExt,
 {
     fn write_val(&mut self, v: LifxString) -> Result<(), io::Error> {
+        let b = v.0.to_bytes();
         for idx in 0..32 {
-            if idx >= v.0.len() {
+            if idx >= b.len() {
                 self.write_u8(0)?;
             } else {
-                self.write_u8(v.0.chars().nth(idx).unwrap() as u8)?;
+                self.write_u8(b[idx])?;
             }
         }
         Ok(())
@@ -280,12 +341,12 @@ where
     }
 }
 
-impl<T> LittleEndianWriter<&[HSBK; 82]> for T
+impl<T> LittleEndianWriter<&Box<[HSBK; 82]>> for T
 where
     T: WriteBytesExt,
 {
-    fn write_val(&mut self, v: &[HSBK; 82]) -> Result<(), io::Error> {
-        for elem in v {
+    fn write_val(&mut self, v: &Box<[HSBK; 82]>) -> Result<(), io::Error> {
+        for elem in &**v {
             self.write_val(*elem)?;
         }
         Ok(())
@@ -410,14 +471,17 @@ impl<R: ReadBytesExt> LittleEndianReader<LifxIdent> for R {
 
 impl<R: ReadBytesExt> LittleEndianReader<LifxString> for R {
     fn read_val(&mut self) -> Result<LifxString, io::Error> {
-        let mut label = String::with_capacity(32);
-        for _ in 0..32 {
+        let mut bytes = Vec::new();
+        for _ in 0..31 {
             let c: u8 = self.read_val()?;
-            if c > 0 {
-                label.push(c as char);
+            if let Some(b) = std::num::NonZeroU8::new(c) {
+                bytes.push(b);
             }
         }
-        Ok(LifxString(label))
+        // read the null terminator
+        self.read_u8()?;
+
+        Ok(LifxString(CString::from(bytes)))
     }
 }
 
@@ -428,6 +492,31 @@ impl<R: ReadBytesExt> LittleEndianReader<EchoPayload> for R {
             *v = self.read_val()?;
         }
         Ok(EchoPayload(val))
+    }
+}
+
+impl<R: ReadBytesExt> LittleEndianReader<PowerLevel> for R {
+    fn read_val(&mut self) -> Result<PowerLevel, io::Error> {
+        let val: u16 = self.read_val()?;
+        if val == 0 {
+            Ok(PowerLevel::Standby)
+        } else {
+            Ok(PowerLevel::Enabled)
+        }
+    }
+}
+
+impl<R: ReadBytesExt> LittleEndianReader<Waveform> for R {
+    fn read_val(&mut self) -> Result<Waveform, io::Error> {
+        let v = self.read_u8()?;
+        match v {
+            0 => Ok(Waveform::Saw),
+            1 => Ok(Waveform::Sine),
+            2 => Ok(Waveform::HalfSign),
+            3 => Ok(Waveform::Triangle),
+            4 => Ok(Waveform::Pulse),
+            _ => Ok(Waveform::Saw), // default
+        }
     }
 }
 
@@ -472,6 +561,7 @@ macro_rules! unpack {
 /// service cannot be constructed.
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Service {
     UDP = 1,
     Reserved1 = 2,
@@ -482,6 +572,7 @@ pub enum Service {
 
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PowerLevel {
     Standby = 0,
     Enabled = 65535,
@@ -492,6 +583,8 @@ pub enum PowerLevel {
 /// See also [Message::SetColorZones].
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum ApplicationRequest {
     /// Don't apply the requested changes until a message with Apply or ApplyOnly is sent
     NoApply = 0,
@@ -503,6 +596,8 @@ pub enum ApplicationRequest {
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum Waveform {
     Saw = 0,
     Sine = 1,
@@ -513,6 +608,8 @@ pub enum Waveform {
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum LastHevCycleResult {
     Success = 0,
     Busy = 1,
@@ -525,6 +622,8 @@ pub enum LastHevCycleResult {
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum MultiZoneEffectType {
     Off = 0,
     Move = 1,
@@ -539,6 +638,8 @@ pub enum MultiZoneEffectType {
 /// Note that other message types exist, but are not officially documented (and so are not
 /// available here).
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum Message {
     /// Sent by a client to acquire responses from all devices on the local network. No payload is
     /// required. Causes the devices to transmit a [Message::StateService] message.
@@ -553,11 +654,11 @@ pub enum Message {
     ///
     /// Message type 3
     StateService {
+        /// unsigned 8-bit integer, maps to `Service`
+        service: Service,
         /// Port number of the light.  If the service is temporarily unavailable, then the port value
         /// will be 0.
         port: u32,
-        /// unsigned 8-bit integer, maps to `Service`
-        service: Service,
     },
 
     /// Get Host MCU information. No payload is required. Causes the device to transmit a
@@ -573,7 +674,10 @@ pub enum Message {
     /// Message type 13
     StateHostInfo {
         /// radio receive signal strength in milliWatts
+        #[cfg(not(fuzzing))]
         signal: f32,
+        #[cfg(fuzzing)]
+        signal: ComparableFloat,
         /// Bytes transmitted since power on
         tx: u32,
         /// Bytes received since power on
@@ -621,7 +725,10 @@ pub enum Message {
         ///
         /// The units of this field varies between different products.  See this LIFX doc for more info:
         /// <https://lan.developer.lifx.com/docs/information-messages#statewifiinfo---packet-17>
+        #[cfg(not(fuzzing))]
         signal: f32,
+        #[cfg(fuzzing)]
+        signal: ComparableFloat,
         /// Reserved
         ///
         /// This field used to store bytes transmitted since power on
@@ -866,7 +973,10 @@ pub enum Message {
         /// Duration of a cycle in milliseconds
         period: u32,
         /// Number of cycles
+        #[cfg(not(fuzzing))]
         cycles: f32,
+        #[cfg(fuzzing)]
+        cycles: ComparableFloat,
         /// Waveform Skew, [-32768, 32767] scaled to [0, 1].
         skew_ratio: i16,
         /// Waveform to use for transition.
@@ -920,7 +1030,10 @@ pub enum Message {
         /// Duration of a cycle in milliseconds
         period: u32,
         /// Number of cycles
+        #[cfg(not(fuzzing))]
         cycles: f32,
+        #[cfg(fuzzing)]
+        cycles: ComparableFloat,
 
         skew_ratio: i16,
         waveform: Waveform,
@@ -1075,7 +1188,7 @@ pub enum Message {
         zones_count: u16,
         zone_index: u16,
         colors_count: u8,
-        colors: [HSBK; 82],
+        colors: Box<[HSBK; 82]>,
     },
 
     /// Get the power state of a relay
@@ -1223,8 +1336,10 @@ impl Message {
                 version_major: u16
             )),
             20 => Ok(Message::GetPower),
+            21 => Ok(unpack!(msg, SetPower, level: PowerLevel)),
             22 => Ok(unpack!(msg, StatePower, level: u16)),
             23 => Ok(Message::GetLabel),
+            24 => Ok(unpack!(msg, SetLabel, label: LifxString)),
             25 => Ok(unpack!(msg, StateLabel, label: LifxString)),
             32 => Ok(Message::GetVersion),
             33 => Ok(unpack!(
@@ -1234,6 +1349,7 @@ impl Message {
                 product: u32,
                 reserved: u32
             )),
+            34 => Ok(Message::GetInfo),
             35 => Ok(unpack!(
                 msg,
                 StateInfo,
@@ -1245,6 +1361,13 @@ impl Message {
                 seq: msg.frame_addr.sequence,
             }),
             48 => Ok(Message::GetLocation),
+            49 => Ok(unpack!(
+                msg,
+                SetLocation,
+                location: LifxIdent,
+                label: LifxString,
+                updated_at: u64
+            )),
             50 => Ok(unpack!(
                 msg,
                 StateLocation,
@@ -1253,6 +1376,13 @@ impl Message {
                 updated_at: u64
             )),
             51 => Ok(Message::GetGroup),
+            52 => Ok(unpack!(
+                msg,
+                SetGroup,
+                group: LifxIdent,
+                label: LifxString,
+                updated_at: u64
+            )),
             53 => Ok(unpack!(
                 msg,
                 StateGroup,
@@ -1269,6 +1399,17 @@ impl Message {
                 reserved: u8,
                 color: HSBK,
                 duration: u32
+            )),
+            103 => Ok(unpack!(
+                msg,
+                SetWaveform,
+                reserved: u8,
+                transient: bool,
+                color: HSBK,
+                period: u32,
+                cycles: f32,
+                skew_ratio: i16,
+                waveform: Waveform
             )),
             107 => Ok(unpack!(
                 msg,
@@ -1287,8 +1428,25 @@ impl Message {
                     level: c.read_val()?,
                 })
             }
+            119 => Ok(unpack!(
+                msg,
+                SetWaveformOptional,
+                reserved: u8,
+                transient: bool,
+                color: HSBK,
+                period: u32,
+                cycles: f32,
+                skew_ratio: i16,
+                waveform: Waveform,
+                set_hue: bool,
+                set_saturation: bool,
+                set_brightness: bool,
+                set_kelvin: bool
+            )),
             120 => Ok(Message::LightGetInfrared),
+            122 => Ok(unpack!(msg, LightSetInfrared, brightness: u16)),
             142 => Ok(Message::LightGetHevCycle),
+            143 => Ok(unpack!(msg, LightSetHevCycle, enable: bool, duration: u32)),
             144 => Ok(unpack!(
                 msg,
                 LightStateHevCycle,
@@ -1297,6 +1455,12 @@ impl Message {
                 last_power: bool
             )),
             145 => Ok(Message::LightGetHevCycleConfiguration),
+            146 => Ok(unpack!(
+                msg,
+                LightSetHevCycleConfiguration,
+                indication: bool,
+                duration: u32
+            )),
             147 => Ok(unpack!(
                 msg,
                 LightStateHevCycleConfiguration,
@@ -1380,6 +1544,7 @@ impl Message {
 ///
 /// To display "pure" colors, set saturation to full (65535).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct HSBK {
     pub hue: u16,
     pub saturation: u16,
@@ -1551,7 +1716,7 @@ impl Frame {
 
     fn validate(&self) {
         assert!(self.origin < 4);
-        assert_eq!(self.addressable, true);
+        assert!(self.addressable);
         assert_eq!(self.protocol, 1024);
     }
     fn pack(&self) -> Result<Vec<u8>, Error> {
@@ -1695,7 +1860,7 @@ impl ProtocolHeader {
 /// Options used to construct a [RawMessage].
 ///
 /// See also [RawMessage::build].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BuildOptions {
     /// If not `None`, this is the ID of the device you want to address.
     ///
@@ -1723,18 +1888,6 @@ pub struct BuildOptions {
     /// address/port of the client that sent the originating message.  If zero, then the LIFX
     /// device may send a broadcast message that can be received by all clients on the same sub-net.
     pub source: u32,
-}
-
-impl std::default::Default for BuildOptions {
-    fn default() -> BuildOptions {
-        BuildOptions {
-            target: None,
-            ack_required: false,
-            res_required: false,
-            sequence: 0,
-            source: 0,
-        }
-    }
 }
 
 impl RawMessage {
@@ -1905,8 +2058,8 @@ impl RawMessage {
                 v.write_val(updated_at)?;
             }
             Message::StateService { port, service } => {
-                v.write_val(port)?;
                 v.write_val(service as u8)?;
+                v.write_val(port)?;
             }
             Message::StateHostInfo {
                 signal,
@@ -2520,6 +2673,22 @@ mod tests {
                 0x00, 0x00, 0x00, 0x00, 0x66, 0x00, 0x00, 0x00, 0x00, 0x55, 0x55, 0xFF, 0xFF, 0xFF,
                 0xFF, 0xAC, 0x0D, 0x00, 0x04, 0x00, 0x00
             ]
+        );
+    }
+
+    #[test]
+    fn test_lifx_string() {
+        let s = CStr::from_bytes_with_nul(b"hello\0").unwrap();
+        let ls = LifxString::new(s);
+        assert_eq!(ls.cstr(), s);
+        assert!(ls.cstr().to_bytes_with_nul().len() <= 32);
+
+        let s = CStr::from_bytes_with_nul(b"this is bigger than thirty two characters\0").unwrap();
+        let ls = LifxString::new(s);
+        assert_eq!(ls.cstr().to_bytes_with_nul().len(), 32);
+        assert_eq!(
+            ls.cstr(),
+            CStr::from_bytes_with_nul(b"this is bigger than thirty two \0").unwrap()
         );
     }
 }
