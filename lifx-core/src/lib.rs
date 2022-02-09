@@ -21,7 +21,7 @@
 //!
 //! # Unknown values
 //! It's common to see packets for LIFX bulbs that don't match the documented protocol.  These are
-//! suspected to be internal messages that are used by offical LIFX apps, but that aren't documented.
+//! suspected to be internal messages that are used by official LIFX apps, but that aren't documented.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::cmp::PartialEq;
@@ -135,7 +135,7 @@ impl TryFrom<u16> for PowerLevel {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(fuzzing, derive(PartialEq))]
 pub struct EchoPayload(pub [u8; 64]);
@@ -146,12 +146,12 @@ impl std::fmt::Debug for EchoPayload {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct LifxIdent(pub [u8; 16]);
 
 /// Lifx strings are fixed-length (32-bytes maximum)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifxString(CString);
 
 impl LifxString {
@@ -162,7 +162,7 @@ impl LifxString {
             b[31] = 0;
             let b = b[..32].to_vec();
             LifxString(unsafe {
-                // Saftey: we created the null terminator above, and the rest of the bytes originally came from a CStr
+                // Safety: we created the null terminator above, and the rest of the bytes originally came from a CStr
                 CString::from_vec_with_nul_unchecked(b)
             })
         } else {
@@ -560,7 +560,7 @@ macro_rules! unpack {
 /// Since these other services are unsupported by the lifx-core library, a message with a non-UDP
 /// service cannot be constructed.
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Service {
     UDP = 1,
@@ -571,7 +571,7 @@ pub enum Service {
 }
 
 #[repr(u16)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PowerLevel {
     Standby = 0,
@@ -582,7 +582,7 @@ pub enum PowerLevel {
 ///
 /// See also [Message::SetColorZones].
 #[repr(u8)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum ApplicationRequest {
@@ -595,7 +595,7 @@ pub enum ApplicationRequest {
 }
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum Waveform {
@@ -607,7 +607,7 @@ pub enum Waveform {
 }
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum LastHevCycleResult {
@@ -621,7 +621,7 @@ pub enum LastHevCycleResult {
 }
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum MultiZoneEffectType {
@@ -637,7 +637,7 @@ pub enum MultiZoneEffectType {
 ///
 /// Note that other message types exist, but are not officially documented (and so are not
 /// available here).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum Message {
@@ -673,7 +673,7 @@ pub enum Message {
     ///
     /// Message type 13
     StateHostInfo {
-        /// radio receive signal strength in miliWatts
+        /// radio receive signal strength in milliWatts
         #[cfg(not(fuzzing))]
         signal: f32,
         #[cfg(fuzzing)]
@@ -1043,7 +1043,7 @@ pub enum Message {
         set_kelvin: bool,
     },
 
-    /// Gets the current maximum power level of the Infraed channel
+    /// Gets the current maximum power level of the Infrared channel
     ///
     /// Message type 120
     LightGetInfrared,
@@ -1543,7 +1543,7 @@ impl Message {
 /// When a light is displaying colors, kelvin is ignored.
 ///
 /// To display "pure" colors, set saturation to full (65535).
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct HSBK {
     pub hue: u16,
@@ -1622,7 +1622,7 @@ impl HSBK {}
 /// Contains a low-level protocol info.  This is what is sent and received via UDP packets.
 ///
 /// To parse the payload, use [Message::from_raw].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawMessage {
     pub frame: Frame,
     pub frame_addr: FrameAddress,
@@ -1640,7 +1640,7 @@ pub struct RawMessage {
 /// The `tagged` field is a boolean that indicates whether the Frame Address target field is
 /// being used to address an individual device or all devices.  If `tagged` is true, then the
 /// `target` field should be all zeros.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Frame {
     /// 16 bits: Size of entire message in bytes including this field
     pub size: u16,
@@ -1673,7 +1673,7 @@ pub struct Frame {
 /// * Acknowledgement message is required flag
 /// * State response message is required flag
 /// * Message sequence number
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameAddress {
     /// 64 bits: 6 byte device address (MAC address) or zero (0) means all devices
     pub target: u64,
@@ -1694,7 +1694,7 @@ pub struct FrameAddress {
     pub sequence: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProtocolHeader {
     /// 64 bits: Reserved
     pub reserved: u64,
@@ -1857,10 +1857,10 @@ impl ProtocolHeader {
     }
 }
 
-/// Options used to contruct a [RawMessage].
+/// Options used to construct a [RawMessage].
 ///
 /// See also [RawMessage::build].
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BuildOptions {
     /// If not `None`, this is the ID of the device you want to address.
     ///
@@ -1889,7 +1889,6 @@ pub struct BuildOptions {
     /// device may send a broadcast message that can be received by all clients on the same sub-net.
     pub source: u32,
 }
-
 
 impl RawMessage {
     /// Build a RawMessage (which is suitable for sending on the network) from a given Message
@@ -2325,7 +2324,7 @@ impl RawMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TemperatureRange {
     /// The device supports a range of temperatures
     Variable { min: u16, max: u16 },
@@ -2335,7 +2334,7 @@ pub enum TemperatureRange {
     None,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct ProductInfo {
     pub name: &'static str,
 
