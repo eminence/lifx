@@ -362,6 +362,19 @@ where
     }
 }
 
+impl<T> LittleEndianWriter<&[u32; 8]> for T
+where
+    T: WriteBytesExt,
+{
+    fn write_val(&mut self, v: &[u32; 8]) -> Result<(), io::Error> {
+        for elem in v {
+            self.write_u32::<LittleEndian>(*elem)?;
+        }
+        Ok(())
+    }
+}
+
+
 trait LittleEndianReader<T> {
     fn read_val(&mut self) -> Result<T, io::Error>;
 }
@@ -424,6 +437,16 @@ impl<R: ReadBytesExt> LittleEndianReader<[u8; 32]> for R {
     fn read_val(&mut self) -> Result<[u8; 32], io::Error> {
         let mut data = [0; 32];
         self.read_exact(&mut data)?;
+        Ok(data)
+    }
+}
+
+impl<R: ReadBytesExt> LittleEndianReader<[u32; 8]> for R {
+    fn read_val(&mut self) -> Result<[u32; 8], io::Error> {
+        let mut data = [0; 8];
+        for x in &mut data {
+            *x = self.read_u32::<LittleEndian>()?;
+        }
         Ok(data)
     }
 }
@@ -1177,7 +1200,7 @@ pub enum Message {
         reserved7: u32,
         reserved8: u32,
         /// The parameters that was used in the request.
-        parameters: [u8; 32],
+        parameters: [u32; 8],
     },
 
     /// Message type 509
@@ -1193,12 +1216,12 @@ pub enum Message {
         reserved7: u32,
         reserved8: u32,
         /// The parameters that was used in the request.
-        parameters: [u8; 32],
+        parameters: [u32; 8],
     },
 
     /// Message type 510
     SetExtendedColorZones {
-        duration: u64,
+        duration: u32,
         apply: ApplicationRequest,
         zone_index: u16,
         colors_count: u8,
@@ -1537,7 +1560,7 @@ impl Message {
                 duration: u64,
                 reserved7: u32,
                 reserved8: u32,
-                parameters: [u8; 32]
+                parameters: [u32; 8]
             )),
             509 => Ok(unpack!(
                 msg,
@@ -1549,12 +1572,12 @@ impl Message {
                 duration: u64,
                 reserved7: u32,
                 reserved8: u32,
-                parameters: [u8; 32]
+                parameters: [u32; 8]
             )),
             510 => Ok(unpack!(
                 msg,
                 SetExtendedColorZones,
-                duration: u64,
+                duration: u32,
                 apply: u8,
                 zone_index: u16,
                 colors_count: u8,
