@@ -1164,6 +1164,22 @@ pub enum Message {
     /// Message type 507
     GetMultiZoneEffect,
 
+    /// Message type 508
+    SetMultiZoneEffect {
+        /// The unique value identifying this effect
+        instance_id: u32,
+        typ: MultiZoneEffectType,
+        reserved: u16,
+        /// The time it takes for one cycle of the effect in milliseconds
+        speed: u32,
+        /// The amount of time left in the current effect in nanoseconds
+        duration: u64,
+        reserved7: u32,
+        reserved8: u32,
+        /// The parameters that was used in the request.
+        parameters: [u8; 32],
+    },
+
     /// Message type 509
     StateMultiZoneEffect {
         /// The unique value identifying this effect
@@ -1178,6 +1194,15 @@ pub enum Message {
         reserved8: u32,
         /// The parameters that was used in the request.
         parameters: [u8; 32],
+    },
+
+    /// Message type 510
+    SetExtendedColorZones {
+        duration: u64,
+        apply: ApplicationRequest,
+        zone_index: u16,
+        colors_count: u8,
+        colors: Box<[HSBK; 82]>,
     },
 
     /// Message type 511
@@ -1285,7 +1310,9 @@ impl Message {
             Message::StateZone { .. } => 503,
             Message::StateMultiZone { .. } => 506,
             Message::GetMultiZoneEffect => 507,
+            Message::SetMultiZoneEffect { .. } => 508,
             Message::StateMultiZoneEffect { .. } => 509,
+            Message::SetExtendedColorZones { .. } => 510,
             Message::GetExtendedColorZone => 511,
             Message::StateExtendedColorZones { .. } => 512,
             Message::RelayGetPower { .. } => 816,
@@ -1500,6 +1527,18 @@ impl Message {
                 color7: HSBK
             )),
             507 => Ok(Message::GetMultiZoneEffect),
+            508 => Ok(unpack!(
+                msg,
+                SetMultiZoneEffect,
+                instance_id: u32,
+                typ: MultiZoneEffectType,
+                reserved: u16,
+                speed: u32,
+                duration: u64,
+                reserved7: u32,
+                reserved8: u32,
+                parameters: [u8; 32]
+            )),
             509 => Ok(unpack!(
                 msg,
                 StateMultiZoneEffect,
@@ -1511,6 +1550,15 @@ impl Message {
                 reserved7: u32,
                 reserved8: u32,
                 parameters: [u8; 32]
+            )),
+            510 => Ok(unpack!(
+                msg,
+                SetExtendedColorZones,
+                duration: u64,
+                apply: u8,
+                zone_index: u16,
+                colors_count: u8,
+                colors: [HSBK; 82]
             )),
             511 => Ok(Message::GetExtendedColorZone),
             512 => Ok(unpack!(
@@ -2207,6 +2255,25 @@ impl RawMessage {
             Message::LightStateLastHevCycleResult { result } => {
                 v.write_val(result)?;
             }
+            Message::SetMultiZoneEffect {
+                instance_id,
+                typ,
+                reserved,
+                speed,
+                duration,
+                reserved7,
+                reserved8,
+                parameters,
+            } => {
+                v.write_val(instance_id)?;
+                v.write_val(typ)?;
+                v.write_val(reserved)?;
+                v.write_val(speed)?;
+                v.write_val(duration)?;
+                v.write_val(reserved7)?;
+                v.write_val(reserved8)?;
+                v.write_val(&parameters)?;
+            }
             Message::StateMultiZoneEffect {
                 instance_id,
                 typ,
@@ -2225,6 +2292,19 @@ impl RawMessage {
                 v.write_val(reserved7)?;
                 v.write_val(reserved8)?;
                 v.write_val(&parameters)?;
+            }
+            Message::SetExtendedColorZones {
+                duration,
+                apply,
+                zone_index,
+                colors_count,
+                colors,
+            } => {
+                v.write_val(duration)?;
+                v.write_val(apply)?;
+                v.write_val(zone_index)?;
+                v.write_val(colors_count)?;
+                v.write_val(&colors)?;
             }
             Message::StateExtendedColorZones {
                 zones_count,
