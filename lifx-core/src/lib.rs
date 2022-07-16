@@ -137,7 +137,6 @@ impl TryFrom<u16> for PowerLevel {
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[cfg_attr(fuzzing, derive(PartialEq))]
 pub struct EchoPayload(pub [u8; 64]);
 
 impl std::fmt::Debug for EchoPayload {
@@ -606,7 +605,6 @@ pub enum PowerLevel {
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum ApplicationRequest {
     /// Don't apply the requested changes until a message with Apply or ApplyOnly is sent
     NoApply = 0,
@@ -619,7 +617,6 @@ pub enum ApplicationRequest {
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum Waveform {
     Saw = 0,
     Sine = 1,
@@ -631,7 +628,6 @@ pub enum Waveform {
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum LastHevCycleResult {
     Success = 0,
     Busy = 1,
@@ -645,7 +641,6 @@ pub enum LastHevCycleResult {
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum MultiZoneEffectType {
     Off = 0,
     Move = 1,
@@ -661,7 +656,6 @@ pub enum MultiZoneEffectType {
 /// available here).
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[cfg_attr(fuzzing, derive(PartialEq))]
 pub enum Message {
     /// Sent by a client to acquire responses from all devices on the local network. No payload is
     /// required. Causes the devices to transmit a [Message::StateService] message.

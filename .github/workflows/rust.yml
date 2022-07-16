@@ -31,3 +31,13 @@ jobs:
       - run: cargo +${{ matrix.toolchain }} build --workspace
       - run: cargo +${{ matrix.toolchain }} test --workspace
 
+# This doesn't actually fuzz anything, but just checks that the fuzzing infra is working
+  fuzz:
+    name: Check fuzzing code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo +nightly install cargo-fuzz
+      - run: cargo +nightly fuzz run message_roundtrip -- -max_total_time=2
