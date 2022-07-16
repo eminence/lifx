@@ -2616,8 +2616,8 @@ mod tests {
 
         assert_eq!(frame.size, 0x0028);
         assert_eq!(frame.origin, 1);
-        assert_eq!(frame.addressable, true);
-        assert_eq!(frame.tagged, false);
+        assert!(frame.addressable);
+        assert!(!frame.tagged);
         assert_eq!(frame.protocol, 1024);
         assert_eq!(frame.source, 0x524b5242);
     }
@@ -2633,8 +2633,8 @@ mod tests {
 
         assert_eq!(frame.size, 0x0024);
         assert_eq!(frame.origin, 0);
-        assert_eq!(frame.tagged, false);
-        assert_eq!(frame.addressable, true);
+        assert!(!frame.tagged);
+        assert!(frame.addressable);
         assert_eq!(frame.protocol, 1024);
         assert_eq!(frame.source, 0x053741ca);
     }
@@ -2852,15 +2852,15 @@ mod tests {
         match msg {
             Message::SetExtendedColorZones {
                 duration: 1300,
-                apply: Apply,
+                apply: ApplicationRequest::Apply,
                 zone_index: 0,
                 colors_count: 16,
                 colors,
             } => {
-                assert!(colors.len() == 82);
+                assert_eq!(colors.len(), 82);
             }
             _ => {
-                assert!(false)
+                panic!("Unexpected message")
             }
         }
     }

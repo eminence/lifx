@@ -378,7 +378,8 @@ impl Manager {
 
     fn refresh(&self) {
         if let Ok(bulbs) = self.bulbs.lock() {
-            for bulb in bulbs.values() {
+            let bulbs = bulbs.values();
+            for bulb in bulbs {
                 bulb.query_for_missing_info(&self.sock).unwrap();
             }
         }
@@ -396,7 +397,8 @@ fn main() {
 
         println!("\n\n\n\n");
         if let Ok(bulbs) = mgr.bulbs.lock() {
-            for bulb in bulbs.values() {
+            let bulbs = bulbs.values();
+            for bulb in bulbs {
                 println!("{:?}", bulb);
             }
         }
