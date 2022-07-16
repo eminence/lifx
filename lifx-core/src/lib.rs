@@ -2854,7 +2854,21 @@ mod tests {
         rawmsg.validate();
 
         let msg = Message::from_raw(&rawmsg).unwrap();
-        println!("{:#?}", msg);
+
+        match msg {
+            Message::SetExtendedColorZones {
+                duration: 1300,
+                apply: Apply,
+                zone_index: 0,
+                colors_count: 16,
+                colors,
+            } => {
+                assert!(colors.len() == 82);
+            }
+            _ => {
+                assert!(false)
+            }
+        }
     }
 
     #[test]
@@ -2872,6 +2886,18 @@ mod tests {
         rawmsg.validate();
 
         let msg = Message::from_raw(&rawmsg).unwrap();
-        println!("{:#?}", msg);
+
+        assert!(
+            msg == Message::SetMultiZoneEffect {
+                instance_id: 0,
+                typ: MultiZoneEffectType::Move,
+                reserved: 0,
+                speed: 3000,
+                duration: 0,
+                reserved7: 0,
+                reserved8: 0,
+                parameters: [0, 0, 1, 0, 0, 0, 0, 0,],
+            }
+        )
     }
 }
