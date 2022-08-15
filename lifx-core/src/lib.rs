@@ -27,7 +27,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::cmp::PartialEq;
 use std::convert::{TryFrom, TryInto};
 use std::ffi::{CStr, CString};
-use std::fmt::Write;
+use std::fmt::{self, Write};
 use std::io;
 use std::io::Cursor;
 use thiserror::Error;
@@ -69,8 +69,8 @@ pub enum Error {
     #[error("i/o error")]
     Io(#[from] io::Error),
 
-    #[error("raw message error:\n`{0}`")]
-    RawMessage(String),
+    #[error("error unpacking raw message: `{0}`")]
+    RawMessage(&'static str),
 }
 
 impl From<std::convert::Infallible> for Error {
@@ -1783,20 +1783,14 @@ impl Frame {
     }
 
     fn validate(&self) -> Result<(), Error> {
-        let mut errors = String::new();
-
         if self.origin >= 4 {
-            let _ = writeln!(errors, "invalid origin value {}", self.origin);
+            return Err(Error::RawMessage("invalid origin value in frame"));
         }
         if !self.addressable {
-            errors.push_str("missing target address\n");
+            return Err(Error::RawMessage("missing target address in frame"));
         }
         if self.protocol != 1024 {
-            let _ = writeln!(errors, "invalid protocol number {}", self.protocol);
-        }
-
-        if !errors.is_empty() {
-            return Err(Error::RawMessage(errors));
+            return Err(Error::RawMessage("invalid protocol number in frame"));
         }
 
         Ok(())
@@ -1860,9 +1854,7 @@ impl FrameAddress {
     }
     fn validate(&self) -> Result<(), Error> {
         if self.reserved != [0; 6] && self.reserved2 != 0 {
-            return Err(Error::RawMessage(
-                "reserved fields must be zeroed".to_string(),
-            ));
+            return Err(Error::RawMessage("reserved fields must be zeroed"));
         }
 
         Ok(())
@@ -1918,9 +1910,7 @@ impl ProtocolHeader {
     }
     fn validate(&self) -> Result<(), Error> {
         if self.reserved != 0 && self.reserved2 != 0 {
-            return Err(Error::RawMessage(
-                "reserved fields must be zeroed".to_string(),
-            ));
+            return Err(Error::RawMessage("reserved fields must be zeroed"));
         }
 
         Ok(())
@@ -2407,7 +2397,7 @@ impl RawMessage {
             + self.payload.len()
     }
 
-    /// Validates that this object was constructed correctly.  Panics if not.
+    /// Validates that this object was constructed correctly.
     pub fn validate(&self) -> Result<(), Error> {
         self.frame.validate()?;
         self.frame_addr.validate()?;
@@ -2607,7 +2597,7 @@ mod tests {
             protocol: 1024,
             source: 1234567,
         };
-        assert!(frame.validate().is_ok());
+        frame.validate().unwrap();
 
         let v = frame.pack().unwrap();
         println!("{:?}", v);
@@ -2673,7 +2663,7 @@ mod tests {
             res_required: false,
             sequence: 248,
         };
-        assert!(frame.validate().is_ok());
+        frame.validate().unwrap();
 
         let v = frame.pack().unwrap();
         assert_eq!(v.len(), FrameAddress::packed_size());
@@ -2693,7 +2683,7 @@ mod tests {
         assert_eq!(v.len(), FrameAddress::packed_size());
 
         let frame = FrameAddress::unpack(&v).unwrap();
-        assert!(frame.validate().is_ok());
+        frame.validate().unwrap();
         println!("FrameAddress: {:?}", frame);
     }
 
@@ -2704,7 +2694,7 @@ mod tests {
             reserved2: 0,
             typ: 0x4455,
         };
-        assert!(frame.validate().is_ok());
+        frame.validate().unwrap();
 
         let v = frame.pack().unwrap();
         assert_eq!(v.len(), ProtocolHeader::packed_size());
@@ -2723,7 +2713,7 @@ mod tests {
         assert_eq!(v.len(), ProtocolHeader::packed_size());
 
         let frame = ProtocolHeader::unpack(&v).unwrap();
-        assert!(frame.validate().is_ok());
+        frame.validate().unwrap();
         println!("ProtocolHeader: {:?}", frame);
     }
 
@@ -2736,7 +2726,7 @@ mod tests {
         ];
 
         let msg = RawMessage::unpack(&v).unwrap();
-        assert!(msg.validate().is_ok());
+        msg.validate().unwrap();
         println!("{:#?}", msg);
     }
 
@@ -2753,7 +2743,7 @@ mod tests {
         ];
 
         let msg = RawMessage::unpack(&v).unwrap();
-        assert!(msg.validate().is_ok());
+        msg.validate().unwrap();
         println!("{:#?}", msg);
     }
 
@@ -2869,7 +2859,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let rawmsg = RawMessage::unpack(&v).unwrap();
-        assert!(rawmsg.validate().is_ok());
+        rawmsg.validate().unwrap();
 
         let msg = Message::from_raw(&rawmsg).unwrap();
 
@@ -2901,7 +2891,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let rawmsg = RawMessage::unpack(&v).unwrap();
-        assert!(rawmsg.validate().is_ok());
+        rawmsg.validate().unwrap();
 
         let msg = Message::from_raw(&rawmsg).unwrap();
 
