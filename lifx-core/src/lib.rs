@@ -27,7 +27,6 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::cmp::PartialEq;
 use std::convert::{TryFrom, TryInto};
 use std::ffi::{CStr, CString};
-use std::fmt::{self, Write};
 use std::io;
 use std::io::Cursor;
 use thiserror::Error;
@@ -1852,8 +1851,8 @@ impl FrameAddress {
     fn packed_size() -> usize {
         16
     }
-    fn validate(&self) -> Result<(), Error> {
-        if self.reserved != [0; 6] && self.reserved2 != 0 {
+    fn validate(&self, strict: bool) -> Result<(), Error> {
+        if strict && self.reserved != [0; 6] && self.reserved2 != 0 {
             return Err(Error::RawMessage("reserved fields must be zeroed"));
         }
 
@@ -1899,7 +1898,7 @@ impl FrameAddress {
             res_required,
             sequence,
         };
-        f.validate()?;
+        f.validate(false)?;
         Ok(f)
     }
 }
@@ -1908,8 +1907,8 @@ impl ProtocolHeader {
     fn packed_size() -> usize {
         12
     }
-    fn validate(&self) -> Result<(), Error> {
-        if self.reserved != 0 && self.reserved2 != 0 {
+    fn validate(&self, strict: bool) -> Result<(), Error> {
+        if strict && self.reserved != 0 && self.reserved2 != 0 {
             return Err(Error::RawMessage("reserved fields must be zeroed"));
         }
 
@@ -1936,7 +1935,7 @@ impl ProtocolHeader {
             typ,
             reserved2,
         };
-        f.validate()?;
+        f.validate(false)?;
         Ok(f)
     }
 }
@@ -2398,10 +2397,10 @@ impl RawMessage {
     }
 
     /// Validates that this object was constructed correctly.
-    pub fn validate(&self) -> Result<(), Error> {
+    pub fn validate(&self, strict: bool) -> Result<(), Error> {
         self.frame.validate()?;
-        self.frame_addr.validate()?;
-        self.protocol_header.validate()?;
+        self.frame_addr.validate(strict)?;
+        self.protocol_header.validate(strict)?;
 
         Ok(())
     }
@@ -2425,10 +2424,10 @@ impl RawMessage {
         frame.validate()?;
         start += Frame::packed_size();
         let addr = FrameAddress::unpack(&v[start..])?;
-        addr.validate()?;
+        addr.validate(false)?;
         start += FrameAddress::packed_size();
         let proto = ProtocolHeader::unpack(&v[start..])?;
-        proto.validate()?;
+        proto.validate(false)?;
         start += ProtocolHeader::packed_size();
 
         let body = Vec::from(&v[start..(frame.size as usize)]);
@@ -2663,7 +2662,7 @@ mod tests {
             res_required: false,
             sequence: 248,
         };
-        frame.validate().unwrap();
+        frame.validate(false).unwrap();
 
         let v = frame.pack().unwrap();
         assert_eq!(v.len(), FrameAddress::packed_size());
@@ -2683,7 +2682,7 @@ mod tests {
         assert_eq!(v.len(), FrameAddress::packed_size());
 
         let frame = FrameAddress::unpack(&v).unwrap();
-        frame.validate().unwrap();
+        frame.validate(false).unwrap();
         println!("FrameAddress: {:?}", frame);
     }
 
@@ -2694,7 +2693,7 @@ mod tests {
             reserved2: 0,
             typ: 0x4455,
         };
-        frame.validate().unwrap();
+        frame.validate(false).unwrap();
 
         let v = frame.pack().unwrap();
         assert_eq!(v.len(), ProtocolHeader::packed_size());
@@ -2713,7 +2712,7 @@ mod tests {
         assert_eq!(v.len(), ProtocolHeader::packed_size());
 
         let frame = ProtocolHeader::unpack(&v).unwrap();
-        frame.validate().unwrap();
+        frame.validate(false).unwrap();
         println!("ProtocolHeader: {:?}", frame);
     }
 
@@ -2726,7 +2725,7 @@ mod tests {
         ];
 
         let msg = RawMessage::unpack(&v).unwrap();
-        msg.validate().unwrap();
+        msg.validate(false).unwrap();
         println!("{:#?}", msg);
     }
 
@@ -2743,7 +2742,7 @@ mod tests {
         ];
 
         let msg = RawMessage::unpack(&v).unwrap();
-        msg.validate().unwrap();
+        msg.validate(false).unwrap();
         println!("{:#?}", msg);
     }
 
@@ -2859,7 +2858,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let rawmsg = RawMessage::unpack(&v).unwrap();
-        rawmsg.validate().unwrap();
+        rawmsg.validate(false).unwrap();
 
         let msg = Message::from_raw(&rawmsg).unwrap();
 
@@ -2891,7 +2890,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let rawmsg = RawMessage::unpack(&v).unwrap();
-        rawmsg.validate().unwrap();
+        rawmsg.validate(false).unwrap();
 
         let msg = Message::from_raw(&rawmsg).unwrap();
 
