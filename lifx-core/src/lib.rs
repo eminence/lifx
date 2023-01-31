@@ -67,6 +67,9 @@ pub enum Error {
 
     #[error("i/o error")]
     Io(#[from] io::Error),
+
+    #[error("error unpacking raw message: `{0}`")]
+    RawMessage(&'static str),
 }
 
 impl From<std::convert::Infallible> for Error {
@@ -1778,10 +1781,18 @@ impl Frame {
         8
     }
 
-    fn validate(&self) {
-        assert!(self.origin < 4);
-        assert!(self.addressable);
-        assert_eq!(self.protocol, 1024);
+    fn validate(&self) -> Result<(), Error> {
+        if self.origin >= 4 {
+            return Err(Error::RawMessage("invalid origin value in frame"));
+        }
+        if !self.addressable {
+            return Err(Error::RawMessage("missing target address in frame"));
+        }
+        if self.protocol != 1024 {
+            return Err(Error::RawMessage("invalid protocol number in frame"));
+        }
+
+        Ok(())
     }
 
     fn pack(&self) -> Result<Vec<u8>, Error> {
@@ -1840,9 +1851,12 @@ impl FrameAddress {
     fn packed_size() -> usize {
         16
     }
-    fn validate(&self) {
-        //assert_eq!(self.reserved, [0;6]);
-        //assert_eq!(self.reserved2, 0);
+    fn validate(&self, strict: bool) -> Result<(), Error> {
+        if strict && self.reserved != [0; 6] && self.reserved2 != 0 {
+            return Err(Error::RawMessage("reserved fields must be zeroed"));
+        }
+
+        Ok(())
     }
     fn pack(&self) -> Result<Vec<u8>, Error> {
         let mut v = Vec::with_capacity(Self::packed_size());
@@ -1884,7 +1898,7 @@ impl FrameAddress {
             res_required,
             sequence,
         };
-        f.validate();
+        f.validate(false)?;
         Ok(f)
     }
 }
@@ -1893,9 +1907,12 @@ impl ProtocolHeader {
     fn packed_size() -> usize {
         12
     }
-    fn validate(&self) {
-        //assert_eq!(self.reserved, 0);
-        //assert_eq!(self.reserved2, 0);
+    fn validate(&self, strict: bool) -> Result<(), Error> {
+        if strict && self.reserved != 0 && self.reserved2 != 0 {
+            return Err(Error::RawMessage("reserved fields must be zeroed"));
+        }
+
+        Ok(())
     }
 
     /// Packs this part of the packet into some bytes
@@ -1918,7 +1935,7 @@ impl ProtocolHeader {
             typ,
             reserved2,
         };
-        f.validate();
+        f.validate(false)?;
         Ok(f)
     }
 }
@@ -2379,11 +2396,13 @@ impl RawMessage {
             + self.payload.len()
     }
 
-    /// Validates that this object was constructed correctly.  Panics if not.
-    pub fn validate(&self) {
-        self.frame.validate();
-        self.frame_addr.validate();
-        self.protocol_header.validate();
+    /// Validates that this object was constructed correctly.
+    pub fn validate(&self, strict: bool) -> Result<(), Error> {
+        self.frame.validate()?;
+        self.frame_addr.validate(strict)?;
+        self.protocol_header.validate(strict)?;
+
+        Ok(())
     }
 
     /// Packs this RawMessage into some bytes that can be send over the network.
@@ -2402,13 +2421,13 @@ impl RawMessage {
     pub fn unpack(v: &[u8]) -> Result<RawMessage, Error> {
         let mut start = 0;
         let frame = Frame::unpack(v)?;
-        frame.validate();
+        frame.validate()?;
         start += Frame::packed_size();
         let addr = FrameAddress::unpack(&v[start..])?;
-        addr.validate();
+        addr.validate(false)?;
         start += FrameAddress::packed_size();
         let proto = ProtocolHeader::unpack(&v[start..])?;
-        proto.validate();
+        proto.validate(false)?;
         start += ProtocolHeader::packed_size();
 
         let body = Vec::from(&v[start..(frame.size as usize)]);
@@ -2577,7 +2596,7 @@ mod tests {
             protocol: 1024,
             source: 1234567,
         };
-        frame.validate();
+        frame.validate().unwrap();
 
         let v = frame.pack().unwrap();
         println!("{:?}", v);
@@ -2643,7 +2662,7 @@ mod tests {
             res_required: false,
             sequence: 248,
         };
-        frame.validate();
+        frame.validate(false).unwrap();
 
         let v = frame.pack().unwrap();
         assert_eq!(v.len(), FrameAddress::packed_size());
@@ -2663,7 +2682,7 @@ mod tests {
         assert_eq!(v.len(), FrameAddress::packed_size());
 
         let frame = FrameAddress::unpack(&v).unwrap();
-        frame.validate();
+        frame.validate(false).unwrap();
         println!("FrameAddress: {:?}", frame);
     }
 
@@ -2674,7 +2693,7 @@ mod tests {
             reserved2: 0,
             typ: 0x4455,
         };
-        frame.validate();
+        frame.validate(false).unwrap();
 
         let v = frame.pack().unwrap();
         assert_eq!(v.len(), ProtocolHeader::packed_size());
@@ -2693,7 +2712,7 @@ mod tests {
         assert_eq!(v.len(), ProtocolHeader::packed_size());
 
         let frame = ProtocolHeader::unpack(&v).unwrap();
-        frame.validate();
+        frame.validate(false).unwrap();
         println!("ProtocolHeader: {:?}", frame);
     }
 
@@ -2706,7 +2725,7 @@ mod tests {
         ];
 
         let msg = RawMessage::unpack(&v).unwrap();
-        msg.validate();
+        msg.validate(false).unwrap();
         println!("{:#?}", msg);
     }
 
@@ -2723,7 +2742,7 @@ mod tests {
         ];
 
         let msg = RawMessage::unpack(&v).unwrap();
-        msg.validate();
+        msg.validate(false).unwrap();
         println!("{:#?}", msg);
     }
 
@@ -2839,7 +2858,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let rawmsg = RawMessage::unpack(&v).unwrap();
-        rawmsg.validate();
+        rawmsg.validate(false).unwrap();
 
         let msg = Message::from_raw(&rawmsg).unwrap();
 
@@ -2871,7 +2890,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let rawmsg = RawMessage::unpack(&v).unwrap();
-        rawmsg.validate();
+        rawmsg.validate(false).unwrap();
 
         let msg = Message::from_raw(&rawmsg).unwrap();
 
