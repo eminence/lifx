@@ -1,6 +1,6 @@
 [package]
 name = "lifx-core"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Andrew Chin <achin@eminence32.net>"]
 repository = "https://github.com/eminence/lifx"
 description = "Low-level control of LIFX bulbs on your LAN"
