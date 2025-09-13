@@ -359,9 +359,10 @@ impl Manager {
 
         for addr in get_if_addrs().unwrap() {
             if let IfAddr::V4(Ifv4Addr {
-                                broadcast: Some(bcast),
-                                ..
-                            }) = addr.addr {
+                broadcast: Some(bcast),
+                ..
+            }) = addr.addr
+            {
                 if addr.ip().is_loopback() {
                     continue;
                 }
@@ -395,7 +396,7 @@ fn main() {
         }
         mgr.refresh();
 
-        println!("\n\n\n\n");
+        // println!("\n\n\n\n");
         if let Ok(bulbs) = mgr.bulbs.lock() {
             let bulbs = bulbs.values();
             for bulb in bulbs {
